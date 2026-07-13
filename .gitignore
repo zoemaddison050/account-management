@@ -11,3 +11,13 @@ dist-ssr
 *.md
 bin/
 obj/
+
+# Production secrets — NEVER commit these
+appsettings.Production.json
+appsettings.Staging.json
+
+# .NET user secrets
+secrets.json
+
+# Published output
+publish/

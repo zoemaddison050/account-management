@@ -9,15 +9,25 @@ public class AppDbContext : DbContext
     {
     }
 
+    public DbSet<StaffUser> StaffUsers => Set<StaffUser>();
     public DbSet<AccountManager> AccountManagers => Set<AccountManager>();
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<Application> Applications => Set<Application>();
     public DbSet<MagicLinkToken> MagicLinkTokens => Set<MagicLinkToken>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
+    public DbSet<PdfGrant> PdfGrants => Set<PdfGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<StaffUser>(entity =>
+        {
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.HasIndex(e => e.Email).IsUnique();
+        });
 
         modelBuilder.Entity<AccountManager>(entity =>
         {
@@ -48,6 +58,25 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(e => e.AuditEventId).IsUnique();
             entity.HasIndex(e => e.Timestamp);
+        });
+
+        modelBuilder.Entity<Invitation>(entity =>
+        {
+            entity.HasIndex(e => e.InvitationId).IsUnique();
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.Email);
+        });
+
+        modelBuilder.Entity<ConsentRecord>(entity =>
+        {
+            entity.HasIndex(e => e.ApplicationId);
+            entity.HasIndex(e => e.Email);
+        });
+
+        modelBuilder.Entity<PdfGrant>(entity =>
+        {
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.ApplicationId);
         });
     }
 }
