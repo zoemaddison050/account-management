@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
-import { createApplicationDraft, saveApplicationDraft } from '../../lib/applicationFlow';
+import { saveApplicationDraft } from '../../lib/applicationFlow';
 import { useManagers } from '../../hooks/useManagers';
+import { submitApplication } from '../../lib/api';
 
 interface FormErrors {
   firstName?: string;
@@ -14,6 +15,7 @@ interface FormErrors {
 }
 
 const countries = [
+  'United States',
   'United Kingdom', 'Ireland', 'Germany', 'France', 'Spain', 'Portugal', 'Italy',
   'Netherlands', 'Belgium', 'Sweden', 'Denmark', 'Norway', 'Finland',
   'Switzerland', 'Austria', 'Japan', 'Singapore', 'United Arab Emirates',
@@ -60,21 +62,47 @@ export default function ApplyOnline() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (ev: React.FormEvent) => {
+  const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!validate()) return;
     setSubmitting(true);
-    const draft = createApplicationDraft({
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      email: form.email.trim(),
-      country: form.country,
-      preferredManager: form.preferredManager,
-    });
 
-    saveApplicationDraft(draft);
-    window.location.assign('/apply/received');
+    try {
+      const response = await submitApplication({
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        country: form.country,
+        preferredManager: form.preferredManager,
+        referralSource: form.source,
+        serviceInterest: form.interest,
+        consentVersion: 'POLICY-v1.0',
+      });
+
+      const draft = {
+        reference: response.reference || `PX-${new Date().getFullYear().toString().slice(-2)}00000`,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        country: form.country,
+        preferredManager: form.preferredManager,
+        submittedAt: new Date().toISOString(),
+        policyVersion: 'POLICY-v1.0',
+        pdfToken: response.pdfToken,
+      };
+
+      saveApplicationDraft(draft);
+      window.location.assign('/apply/received');
+    } catch (err) {
+      console.error('Failed to submit application:', err);
+      setErrors((prev) => ({
+        ...prev,
+        consent: 'An error occurred while submitting your application details. Please try again.',
+      }));
+      setSubmitting(false);
+    }
   };
+
 
   return (
     <div className="fade-in">
@@ -86,15 +114,6 @@ export default function ApplyOnline() {
             subtitle="Complete these details first so a personalised application document can be prepared with your name and chosen account manager. This is not an approval or a client account."
           />
 
-          {/* Safety notice */}
-          <div className="alert alert-warning" style={{ marginBottom: 'var(--space-6)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
-              <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <strong>We will never ask for:</strong> passwords, bank account numbers, card details, wallet recovery phrases, API keys, trading credentials, government ID numbers, or full tax identifiers in this form.
-            </div>
-          </div>
 
           <form onSubmit={handleSubmit} className="card" noValidate>
             <div className="form-grid-2">

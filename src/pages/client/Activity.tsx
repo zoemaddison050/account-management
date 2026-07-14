@@ -1,13 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
-import { activityEvents, formatDate } from '../../data/mockData';
+import { formatDate } from '../../data/mockData';
+import { getClientActivity } from '../../lib/api';
+import type { ActivityEvent } from '../../types';
 
 const typeFilters = ['All', 'Valuation', 'Statement', 'Dividend', 'Fee', 'Allocation change', 'Sync'];
 
 export default function Activity() {
   const [filter, setFilter] = useState('All');
-  const filtered = filter === 'All' ? activityEvents : activityEvents.filter((a) => a.type === filter);
+  const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getClientActivity()
+      .then((data) => {
+        setActivities(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = filter === 'All' ? activities : activities.filter((a) => a.type === filter);
 
   return (
     <div className="fade-in">
@@ -47,40 +61,48 @@ export default function Activity() {
       </div>
 
       {/* Activity timeline */}
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrap" style={{ border: 'none' }}>
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th className="text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((a) => (
-                <tr key={a.id}>
-                  <td className="mono" style={{ whiteSpace: 'nowrap' }}>{formatDate(a.date)}</td>
-                  <td>
-                    <span className={`badge ${a.type === 'Fee' ? 'badge-warning' : a.type === 'Dividend' ? 'badge-success' : a.type === 'Sync' ? 'badge-info' : 'badge-muted'}`}>
-                      {a.type}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 500, color: 'var(--navy-800)' }}>{a.description}</td>
-                  <td className="text-right fw-600">{a.amount || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading ? (
+        <div className="card" style={{ padding: 'var(--space-6)', textAlign: 'center' }}>
+          <p className="text-muted">Loading account activity…</p>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="card" style={{ padding: 0 }}>
+            <div className="table-wrap" style={{ border: 'none' }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((a) => (
+                    <tr key={a.id}>
+                      <td className="mono" style={{ whiteSpace: 'nowrap' }}>{formatDate(a.date)}</td>
+                      <td>
+                        <span className={`badge ${a.type === 'Fee' ? 'badge-warning' : a.type === 'Dividend' ? 'badge-success' : a.type === 'Sync' ? 'badge-info' : 'badge-muted'}`}>
+                          {a.type}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 500, color: 'var(--navy-800)' }}>{a.description}</td>
+                      <td className="text-right fw-600">{a.amount || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-      {filtered.length === 0 && (
-        <EmptyState
-          title="No activity to show"
-          message="No activity events match this filter. Try selecting a different category."
-        />
+          {filtered.length === 0 && (
+            <EmptyState
+              title="No activity to show"
+              message="No activity events match this filter. Try selecting a different category."
+            />
+          )}
+        </>
       )}
     </div>
   );

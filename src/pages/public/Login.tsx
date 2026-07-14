@@ -14,10 +14,12 @@ const MOCK_CODE = '123456';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { requestMagicLink, verifyMagicLink, loading: authLoading, error: authError, clearError } = useAuth();
+  const { requestMagicLink, verifyMagicLink, staffLogin, loading: authLoading, error: authError, clearError } = useAuth();
   const [step, setStep] = useState<LoginStep>('email');
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [portalType, setPortalType] = useState<'client' | 'staff'>('client');
+  const [errors, setErrors] = useState<FormErrors & { password?: string }>({});
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [remember, setRemember] = useState(false);
   const [expiresIn, setExpiresIn] = useState(15);
@@ -40,6 +42,16 @@ export default function Login() {
     return !e.token;
   };
 
+  const validateStaffForm = (): boolean => {
+    const e: FormErrors & { password?: string } = {};
+    if (!email.trim()) e.email = 'Email address is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Please enter a valid email address';
+    
+    if (!password) e.password = 'Password is required';
+    setErrors((prev) => ({ ...prev, email: e.email, password: e.password }));
+    return !e.email && !e.password;
+  };
+
   const handleRequestMagicLink = async (ev?: React.FormEvent) => {
     ev?.preventDefault();
     if (!validateEmail()) return;
@@ -49,6 +61,18 @@ export default function Login() {
       setStep('verify');
       setToken('');
       setErrors({});
+    } catch {
+      // Error message is surfaced via useAuth's error state — no action needed here
+    }
+  };
+
+  const handleStaffLogin = async (ev?: React.FormEvent) => {
+    ev?.preventDefault();
+    if (!validateStaffForm()) return;
+    try {
+      await staffLogin({ email: email.trim(), password: password.trim(), remember });
+      setStep('success');
+      setTimeout(() => navigate('/admin/applications'), 900);
     } catch {
       // Error message is surfaced via useAuth's error state — no action needed here
     }
@@ -97,10 +121,10 @@ export default function Login() {
     }
   };
 
-  // Clear auth error when email changes
+  // Clear auth error when email or password changes
   useEffect(() => {
     if (authError) clearError();
-  }, [email, clearError]);
+  }, [email, password, clearError]);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, var(--navy-900) 0%, var(--navy-800) 100%)' }}>
@@ -118,13 +142,55 @@ export default function Login() {
                   <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
-              <h1 style={{ fontSize: '1.6rem', marginBottom: 'var(--space-2)' }}>Client Sign In</h1>
+              <h1 style={{ fontSize: '1.6rem', marginBottom: 'var(--space-2)' }}>
+                {portalType === 'client' ? 'Client Sign In' : 'Staff Sign In'}
+              </h1>
               <p className="text-muted" style={{ fontSize: '0.9rem' }}>
-                {step === 'email' && 'Enter your email to receive a secure sign-in code.'}
+                {step === 'email' && (portalType === 'client' ? 'Enter your email to receive a secure sign-in code.' : 'Enter your staff credentials.')}
                 {step === 'verify' && `Enter the 6-digit code sent to ${email}.`}
                 {step === 'success' && 'You are signed in. Redirecting…'}
               </p>
             </div>
+
+            {/* Portal Switcher Tabs */}
+            {step === 'email' && (
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', marginBottom: 'var(--space-5)' }}>
+                <button
+                  type="button"
+                  style={{
+                    flex: 1,
+                    padding: 'var(--space-3) 0',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    color: portalType === 'client' ? 'var(--brand-blue-deep)' : 'var(--ink-muted)',
+                    borderBottom: portalType === 'client' ? '2px solid var(--brand-blue-deep)' : 'none',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => { setPortalType('client'); setErrors({}); }}
+                >
+                  Client Portal
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    flex: 1,
+                    padding: 'var(--space-3) 0',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    color: portalType === 'staff' ? 'var(--brand-blue-deep)' : 'var(--ink-muted)',
+                    borderBottom: portalType === 'staff' ? '2px solid var(--brand-blue-deep)' : 'none',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => { setPortalType('staff'); setErrors({}); }}
+                >
+                  Staff Portal
+                </button>
+              </div>
+            )}
 
             {/* Auth error alert */}
             {authError && (
@@ -136,57 +202,120 @@ export default function Login() {
               </div>
             )}
 
-            {/* Step 1: Email */}
+            {/* Step 1: Email / Credentials */}
             {step === 'email' && (
-              <form onSubmit={handleRequestMagicLink} noValidate>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="email">Email address <span className="req">*</span></label>
-                  <input
-                    id="email"
-                    type="email"
-                    className={`form-control ${errors.email ? 'error' : ''}`}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    aria-invalid={!!errors.email}
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                    autoFocus
-                  />
-                  {errors.email && <p className="form-error">{errors.email}</p>}
-                </div>
+              portalType === 'client' ? (
+                <form onSubmit={handleRequestMagicLink} noValidate>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="email">Email address <span className="req">*</span></label>
+                    <input
+                      id="email"
+                      type="email"
+                      className={`form-control ${errors.email ? 'error' : ''}`}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      aria-invalid={!!errors.email}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      autoFocus
+                    />
+                    {errors.email && <p className="form-error">{errors.email}</p>}
+                  </div>
 
-                <div className="form-check" style={{ marginBottom: 'var(--space-5)' }}>
-                  <input
-                    id="remember"
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                  />
-                  <label htmlFor="remember" style={{ fontSize: '0.85rem' }}>Keep me signed in on this device</label>
-                </div>
+                  <div className="form-check" style={{ marginBottom: 'var(--space-5)' }}>
+                    <input
+                      id="remember"
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    <label htmlFor="remember" style={{ fontSize: '0.85rem' }}>Keep me signed in on this device</label>
+                  </div>
 
-                <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
-                  {authLoading ? (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
-                        <path d="M21 12a9 9 0 11-6.219-8.56" />
-                      </svg>
-                      Sending code…
-                    </>
-                  ) : (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                      </svg>
-                      Send sign-in code
-                    </>
-                  )}
-                </button>
+                  <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
+                    {authLoading ? (
+                      <>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
+                          <path d="M21 12a9 9 0 11-6.219-8.56" />
+                        </svg>
+                        Sending code…
+                      </>
+                    ) : (
+                      <>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                        </svg>
+                        Send sign-in code
+                      </>
+                    )}
+                  </button>
 
-                <p className="text-muted" style={{ fontSize: '0.78rem', textAlign: 'center', marginTop: 'var(--space-4)' }}>
-                  Use the same email you used on your application form.
-                </p>
-              </form>
+                  <p className="text-muted" style={{ fontSize: '0.78rem', textAlign: 'center', marginTop: 'var(--space-4)' }}>
+                    Use the same email you used on your application form.
+                  </p>
+                </form>
+              ) : (
+                <form onSubmit={handleStaffLogin} noValidate>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="email">Email address <span className="req">*</span></label>
+                    <input
+                      id="email"
+                      type="email"
+                      className={`form-control ${errors.email ? 'error' : ''}`}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      aria-invalid={!!errors.email}
+                      placeholder="accounts@primexchanges.com"
+                      autoComplete="email"
+                      autoFocus
+                    />
+                    {errors.email && <p className="form-error">{errors.email}</p>}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="password">Password <span className="req">*</span></label>
+                    <input
+                      id="password"
+                      type="password"
+                      className={`form-control ${errors.password ? 'error' : ''}`}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      aria-invalid={!!errors.password}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                    />
+                    {errors.password && <p className="form-error">{errors.password}</p>}
+                  </div>
+
+                  <div className="form-check" style={{ marginBottom: 'var(--space-5)' }}>
+                    <input
+                      id="remember-staff"
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    <label htmlFor="remember-staff" style={{ fontSize: '0.85rem' }}>Keep me signed in on this device</label>
+                  </div>
+
+                  <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
+                    {authLoading ? (
+                      <>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
+                          <path d="M21 12a9 9 0 11-6.219-8.56" />
+                        </svg>
+                        Signing in…
+                      </>
+                    ) : (
+                      <>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                        </svg>
+                        Sign In
+                      </>
+                    )}
+                  </button>
+                </form>
+              )
             )}
 
             {/* Step 2: Verify code */}

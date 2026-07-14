@@ -20,15 +20,27 @@ if (builder.Environment.IsDevelopment())
 }
 
 // ─── Database ─────────────────────────────────────────────────────────────────
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sql => sql.EnableRetryOnFailure(maxRetryCount: 3)));
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+    {
+        options.UseSqlite("Data Source=prime.db");
+        options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    });
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlServer(
+            builder.Configuration.GetConnectionString("DefaultConnection"),
+            sql => sql.EnableRetryOnFailure(maxRetryCount: 3)));
+}
 
 // ─── Application services ─────────────────────────────────────────────────────
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
+builder.Services.AddScoped<IStaffAuthService, StaffAuthService>();
 
 // ─── JWT authentication ───────────────────────────────────────────────────────
 var jwtSecret = builder.Configuration["Jwt:Secret"];
@@ -113,9 +125,14 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 // ─── Database migration on startup ───────────────────────────────────────────
-// Only run in non-Development to avoid accidentally migrating a shared DB.
-// In Development, use `dotnet ef database update` manually.
-if (!app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.EnsureCreatedAsync();
+    await SeedData.InitializeAsync(dbContext);
+}
+else
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();

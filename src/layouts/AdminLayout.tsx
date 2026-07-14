@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Outlet, NavLink, Link } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 import Logo from '../components/Logo';
+import { useAuth } from '../hooks/useAuth';
 
 const adminNav = [
   { label: 'Applications', to: '/admin/applications', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', badge: '8' },
@@ -13,6 +14,7 @@ const adminNav = [
 
 export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { session, logout } = useAuth();
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -38,15 +40,19 @@ export default function AdminLayout() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <div className="hide-mobile" style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>Administrator</p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--navy-300)' }}>MFA verified</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{session?.clientName || 'Staff Member'}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--navy-300)' }}>{session?.role || 'Staff'}</p>
             </div>
             <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--navy-400), var(--navy-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--white)', fontSize: '0.9rem' }}>
-              A
+              {(session?.clientName || 'S')[0]}
             </div>
-            <Link to="/" className="btn btn-ghost hide-mobile" style={{ color: 'var(--navy-200)', fontSize: '0.85rem' }}>
+            <button
+              onClick={logout}
+              className="btn btn-ghost hide-mobile"
+              style={{ color: 'var(--navy-200)', fontSize: '0.85rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
+            >
               Sign Out
-            </Link>
+            </button>
             <button
               type="button"
               className="btn btn-ghost nav-mobile-toggle"
@@ -60,7 +66,7 @@ export default function AdminLayout() {
           </div>
         </div>
       </header>
-
+ 
       {mobileMenuOpen && (
         <nav className="workspace-mobile-nav" aria-label="Admin navigation">
           {adminNav.map((item) => (
@@ -68,7 +74,12 @@ export default function AdminLayout() {
               {item.label}
             </NavLink>
           ))}
-          <Link to="/">Sign out</Link>
+          <button
+            onClick={() => { setMobileMenuOpen(false); logout(); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.7rem 0.9rem', background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer' }}
+          >
+            Sign out
+          </button>
         </nav>
       )}
 

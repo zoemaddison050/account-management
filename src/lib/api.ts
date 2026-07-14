@@ -1,5 +1,25 @@
-import type { AccountManager, AuthSession, MagicLinkRequest, MagicLinkVerify, ClientProfile } from '../types';
-import { accountManagers, demoClient } from '../data/mockData';
+import type {
+  AccountManager,
+  AuthSession,
+  MagicLinkRequest,
+  MagicLinkVerify,
+  ClientProfile,
+  StaffLoginVerify,
+  ActivityEvent,
+  ClientDocument,
+  Application,
+  Client,
+  AuditEvent
+} from '../types';
+import {
+  accountManagers,
+  demoClient,
+  activityEvents,
+  clientDocuments,
+  applications,
+  allClients,
+  auditEvents
+} from '../data/mockData';
 
 /**
  * Base URL for the portal API server.
@@ -12,7 +32,7 @@ import { accountManagers, demoClient } from '../data/mockData';
  * application that serves both the compiled React files and `/api` from the same origin,
  * avoiding CORS complexity.
  */
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : '');
 const SESSION_KEY = 'prime-exchanges.session';
 
 /**
@@ -20,6 +40,24 @@ const SESSION_KEY = 'prime-exchanges.session';
  * When false, all fetch helpers return synthetic demo data immediately.
  */
 export const isApiConfigured = API_BASE_URL !== '';
+
+export interface SubmitApplicationRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  country: string;
+  preferredManager: string;
+  referralSource?: string;
+  serviceInterest?: string;
+  consentVersion: string;
+}
+
+export interface SubmitApplicationResponse {
+  reference?: string;
+  pdfToken?: string;
+  message: string;
+}
+
 
 /**
  * Reads the current JWT token from local/session storage.
@@ -185,3 +223,212 @@ export async function logout(): Promise<void> {
     // Best-effort — the local session is cleared regardless
   }
 }
+
+/**
+ * Submits a new client application inquiry to the server.
+ */
+export async function submitApplication(payload: SubmitApplicationRequest): Promise<SubmitApplicationResponse> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return {
+      reference: `PX-${new Date().getFullYear().toString().slice(-2)}${Math.floor(10000 + Math.random() * 90000)}`,
+      pdfToken: `mock-pdf-token-${Date.now()}`,
+      message: "Your application has been received. We'll be in touch shortly.",
+    };
+  }
+  return apiFetch<SubmitApplicationResponse>('/applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Log in a staff member using email and password.
+ */
+export async function staffLogin(payload: StaffLoginVerify): Promise<AuthSession> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (payload.password !== 'Admin@PrimeX2026!') {
+      throw new Error('API 401: Invalid credentials for staff login');
+    }
+    return {
+      token: `dev-staff-token-${Date.now()}`,
+      clientId: 'USR-001',
+      clientName: 'Prime Accounts Admin',
+      email: payload.email,
+      role: 'Administrator',
+      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return apiFetch<AuthSession>('/auth/staff-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: payload.email, password: payload.password }),
+  });
+}
+
+/**
+ * Fetch client portal activity events.
+ */
+export async function getClientActivity(): Promise<ActivityEvent[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return activityEvents;
+  }
+  return apiFetch<ActivityEvent[]>('/clients/me/activity');
+}
+
+/**
+ * Fetch client portal documents.
+ */
+export async function getClientDocuments(): Promise<ClientDocument[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return clientDocuments;
+  }
+  return apiFetch<ClientDocument[]>('/clients/me/documents');
+}
+
+/**
+ * Fetch admin dashboard summary stats.
+ */
+export async function getAdminStats(): Promise<{ total: number; pending: number; approved: number; declined: number }> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return {
+      total: applications.length,
+      pending: applications.filter(a => a.status !== 'Approved — activation pending' && a.status !== 'Active client' && a.status !== 'Declined' && a.status !== 'Paused / closed').length,
+      approved: applications.filter(a => a.status === 'Approved — activation pending' || a.status === 'Active client').length,
+      declined: applications.filter(a => a.status === 'Declined').length,
+    };
+  }
+  return apiFetch<{ total: number; pending: number; approved: number; declined: number }>('/admin/stats');
+}
+
+/**
+ * Fetch all applications (filtered/searched).
+ */
+export async function getAdminApplications(status?: string, search?: string): Promise<Application[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    let list = [...applications];
+    if (status && status !== 'All') {
+      list = list.filter(a => a.status === status);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(a => a.applicantName.toLowerCase().includes(q) || a.reference.toLowerCase().includes(q) || a.email.toLowerCase().includes(q));
+    }
+    return list;
+  }
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (search) params.append('search', search);
+  return apiFetch<Application[]>(`/admin/applications?${params.toString()}`);
+}
+
+/**
+ * Fetch detailed view of a single application.
+ */
+export async function getAdminApplicationDetail(id: string): Promise<Application> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const app = applications.find(a => a.id === id);
+    if (!app) throw new Error('API 404: Application not found');
+    return app;
+  }
+  return apiFetch<Application>(`/admin/applications/${id}`);
+}
+
+/**
+ * Update the status of an application.
+ */
+export async function updateApplicationStatus(id: string, status: string, reason?: string): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const app = applications.find(a => a.id === id);
+    if (app) {
+      app.status = status as any;
+      app.notes.push({
+        author: 'Staff User',
+        date: new Date().toISOString(),
+        text: `Status changed to '${status}'` + (reason ? `. Reason: ${reason}` : ''),
+      });
+    }
+    return;
+  }
+  await apiFetch<void>(`/admin/applications/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, reason }),
+  });
+}
+
+/**
+ * Add a note to an application.
+ */
+export async function addApplicationNote(id: string, text: string): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const app = applications.find(a => a.id === id);
+    if (app) {
+      app.notes.push({
+        author: 'Staff User',
+        date: new Date().toISOString(),
+        text,
+      });
+    }
+    return;
+  }
+  await apiFetch<void>(`/admin/applications/${id}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+}
+
+/**
+ * Fetch all clients.
+ */
+export async function getAdminClients(): Promise<Client[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return allClients;
+  }
+  return apiFetch<Client[]>('/admin/clients');
+}
+
+/**
+ * Fetch all managers.
+ */
+export async function getAdminManagers(): Promise<AccountManager[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return accountManagers;
+  }
+  return apiFetch<AccountManager[]>('/admin/managers');
+}
+
+/**
+ * Fetch recent audit events.
+ */
+export async function getAdminAuditEvents(severity?: string, search?: string): Promise<AuditEvent[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    let list = [...auditEvents];
+    if (severity && severity !== 'All') {
+      list = list.filter(e => e.severity === severity);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(e => e.actor.toLowerCase().includes(q) || e.action.toLowerCase().includes(q) || e.target.toLowerCase().includes(q) || (e.reason && e.reason.toLowerCase().includes(q)));
+    }
+    return list;
+  }
+  const params = new URLSearchParams();
+  if (severity) params.append('severity', severity);
+  if (search) params.append('search', search);
+  return apiFetch<AuditEvent[]>(`/admin/audit?${params.toString()}`);
+}
+

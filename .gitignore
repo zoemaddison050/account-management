@@ -21,3 +21,19 @@ secrets.json
 
 # Published output
 publish/
+
+# Deployment artifacts
+deployment/
+
+# SQLite dev database
+*.db
+*.db-shm
+*.db-wal
+
+# Build caches & logs
+*.tsbuildinfo
+*.log
+output/
+temp/
+wwwroot/
+/server/PrimeExchanges.Api/wwwroot/

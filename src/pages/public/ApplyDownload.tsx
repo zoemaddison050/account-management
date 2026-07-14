@@ -7,11 +7,42 @@ import { downloadApplicationPdf } from '../../lib/applicationPdf';
 import { loadSignatureImage, COMPANY_SIGNATURE_URL, MANAGER_SIGNATURE_URL } from '../../lib/signatureImage';
 import { useManagers } from '../../hooks/useManagers';
 import type { AccountManager } from '../../types';
+import { isApiConfigured } from '../../lib/api';
+
+async function downloadBlob(url: string, method: 'GET' | 'POST', body?: any, filename?: string) {
+  const options: RequestInit = {
+    method,
+    headers: {
+      'Accept': 'application/pdf',
+    },
+  };
+  if (body) {
+    options.headers = {
+      ...options.headers,
+      'Content-Type': 'application/json',
+    };
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF: ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename || 'Application.pdf';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
 
 export default function ApplyDownload() {
   const draft = getApplicationDraft();
   const { managers, error: managersError } = useManagers();
   const [downloaded, setDownloaded] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [sigEmpty, setSigEmpty] = useState(true);
   const [sigDate, setSigDate] = useState('');
   const sigPadRef = useRef<SignaturePadHandle>(null);
@@ -62,21 +93,42 @@ export default function ApplyDownload() {
 
   const canDownloadSigned = !sigEmpty && sigDate.trim() !== '';
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    setDownloadError(null);
     const signatureDataUrl = sigPadRef.current?.toDataURL() ?? null;
     const dims = sigPadRef.current?.getDimensions() ?? null;
     const aspectRatio = dims && dims.height > 0 ? dims.width / dims.height : undefined;
-    downloadApplicationPdf(draft, {
-      applicantSignatureDataUrl: signatureDataUrl,
-      applicantDate: sigDate.trim() || undefined,
-      applicantSignatureAspectRatio: aspectRatio,
-      managers,
-      companySignatureImage: companySig?.dataUrl ?? null,
-      companySignatureAspectRatio: companySig?.aspectRatio,
-      managerSignatureImage: managerSig?.dataUrl ?? null,
-      managerSignatureAspectRatio: managerSig?.aspectRatio,
-    });
-    setDownloaded(true);
+
+    const useApi = isApiConfigured && draft.pdfToken;
+
+    if (useApi) {
+      try {
+        const base = isApiConfigured ? (import.meta.env.VITE_API_BASE_URL || '/api') : '/api';
+        const url = `${base}/applications/pdf/${encodeURIComponent(draft.pdfToken || '')}`;
+        const filename = `PrimeXchanges-Application-${draft.reference}.pdf`;
+        if (canDownloadSigned) {
+          await downloadBlob(url, 'POST', { signature: signatureDataUrl, date: sigDate.trim() }, filename);
+        } else {
+          await downloadBlob(url, 'GET', undefined, filename);
+        }
+        setDownloaded(true);
+      } catch (err) {
+        console.error(err);
+        setDownloadError('Could not download the server-generated PDF. Please try again.');
+      }
+    } else {
+      downloadApplicationPdf(draft, {
+        applicantSignatureDataUrl: signatureDataUrl,
+        applicantDate: sigDate.trim() || undefined,
+        applicantSignatureAspectRatio: aspectRatio,
+        managers,
+        companySignatureImage: companySig?.dataUrl ?? null,
+        companySignatureAspectRatio: companySig?.aspectRatio,
+        managerSignatureImage: managerSig?.dataUrl ?? null,
+        managerSignatureAspectRatio: managerSig?.aspectRatio,
+      });
+      setDownloaded(true);
+    }
   };
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -216,6 +268,17 @@ export default function ApplyDownload() {
               <p className="form-error" style={{ marginTop: 'var(--space-3)' }}>Please enter the date of your signature to download the signed PDF.</p>
             )}
           </div>
+
+          {downloadError && (
+            <div className="alert alert-danger" style={{ marginBottom: 'var(--space-5)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden>
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <strong>Download failed.</strong> {downloadError}
+              </div>
+            </div>
+          )}
 
           {managersError && (
             <div className="alert alert-warning" style={{ marginBottom: 'var(--space-5)' }}>

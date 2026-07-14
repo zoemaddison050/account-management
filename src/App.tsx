@@ -5,7 +5,7 @@ import { AuthProvider } from './hooks/useAuth';
 import PublicLayout from './layouts/PublicLayout';
 import ClientLayout from './layouts/ClientLayout';
 import AdminLayout from './layouts/AdminLayout';
-import PrototypeAreaGuard from './components/PrototypeAreaGuard';
+import AuthGuard from './components/AuthGuard';
 
 // Public pages
 import Landing from './pages/public/Landing';
@@ -59,7 +59,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
 
         {/* Client portal routes */}
-        <Route element={<PrototypeAreaGuard area="Client portal" />}>
+        <Route element={<AuthGuard area="client" />}>
           <Route path="/client" element={<ClientLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="portfolio" element={<Portfolio />} />
@@ -71,7 +71,7 @@ export default function App() {
         </Route>
 
         {/* Admin routes */}
-        <Route element={<PrototypeAreaGuard area="Admin workspace" />}>
+        <Route element={<AuthGuard area="admin" />}>
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="applications" element={<Applications />} />
             <Route path="clients" element={<Clients />} />

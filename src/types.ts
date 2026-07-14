@@ -171,7 +171,7 @@ export interface AuthSession {
   clientId: string;
   clientName: string;
   email: string;
-  role: 'client';
+  role: 'client' | 'Administrator' | 'OperationsReviewer' | 'ComplianceApprover' | 'AccountManager';
   expiresAt: string;
 }
 
@@ -183,4 +183,10 @@ export interface ClientProfile {
   managerName?: string;
   since: string;
   status: 'active' | 'paused';
+}
+
+export interface StaffLoginVerify {
+  email: string;
+  password?: string;
+  remember?: boolean;
 }

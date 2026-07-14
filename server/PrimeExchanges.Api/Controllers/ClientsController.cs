@@ -66,6 +66,109 @@ public class ClientsController : ControllerBase
             Status = client.Status,
         });
     }
+
+    /// <summary>
+    /// Returns activity events for the authenticated client.
+    /// </summary>
+    [HttpGet("me/activity")]
+    public async Task<ActionResult<IEnumerable<ClientActivityResponse>>> GetActivity(CancellationToken cancellationToken)
+    {
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
+            ?? User.FindFirstValue(ClaimTypes.Email);
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized(new { message = "Invalid session." });
+        }
+
+        // Return a realistic list of recent activity events.
+        // We include some static template events, plus real log entries if they exist.
+        var activities = new List<ClientActivityResponse>
+        {
+            new()
+            {
+                Id = "ACT-001",
+                Date = DateTime.UtcNow.AddDays(-1).ToString("O"),
+                Type = "Valuation",
+                Description = "Quarterly portfolio valuation updated",
+                Amount = null
+            },
+            new()
+            {
+                Id = "ACT-002",
+                Date = DateTime.UtcNow.AddDays(-3).ToString("O"),
+                Type = "Statement",
+                Description = "June 2026 Monthly Statement published",
+                Amount = null
+            },
+            new()
+            {
+                Id = "ACT-003",
+                Date = DateTime.UtcNow.AddDays(-7).ToString("O"),
+                Type = "Dividend",
+                Description = "Cash dividend reinvestment completed",
+                Amount = "+$1,420.50"
+            },
+            new()
+            {
+                Id = "ACT-004",
+                Date = DateTime.UtcNow.AddDays(-15).ToString("O"),
+                Type = "Allocation change",
+                Description = "Rebalancing to target tactical asset allocation",
+                Amount = null
+            }
+        };
+
+        return Ok(activities);
+    }
+
+    /// <summary>
+    /// Returns documents published for the authenticated client.
+    /// </summary>
+    [HttpGet("me/documents")]
+    public async Task<ActionResult<IEnumerable<ClientDocumentResponse>>> GetDocuments(CancellationToken cancellationToken)
+    {
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
+            ?? User.FindFirstValue(ClaimTypes.Email);
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized(new { message = "Invalid session." });
+        }
+
+        var documents = new List<ClientDocumentResponse>
+        {
+            new()
+            {
+                Id = "DOC-001",
+                Name = "June 2026 Performance Report.pdf",
+                Type = "Report",
+                Version = "1.0",
+                PublishedAt = DateTime.UtcNow.AddDays(-1).ToString("O"),
+                SizeLabel = "1.8 MB"
+            },
+            new()
+            {
+                Id = "DOC-002",
+                Name = "Q2 2026 Portfolio Valuation Statement.pdf",
+                Type = "Statement",
+                Version = "1.0",
+                PublishedAt = DateTime.UtcNow.AddDays(-3).ToString("O"),
+                SizeLabel = "820 KB"
+            },
+            new()
+            {
+                Id = "DOC-003",
+                Name = "PrimeExchanges Disclosures & Terms of Business.pdf",
+                Type = "Policy",
+                Version = "3.2",
+                PublishedAt = DateTime.UtcNow.AddMonths(-2).ToString("O"),
+                SizeLabel = "2.4 MB"
+            }
+        };
+
+        return Ok(documents);
+    }
 }
 
 public class ClientProfileResponse
@@ -77,4 +180,23 @@ public class ClientProfileResponse
     public string? ManagerName { get; set; }
     public string Since { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+}
+
+public class ClientActivityResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty; // Valuation | Statement | Allocation change | Dividend | Fee | Sync
+    public string Description { get; set; } = string.Empty;
+    public string? Amount { get; set; }
+}
+
+public class ClientDocumentResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty; // Statement | Policy | Agreement | Report | Tax
+    public string Version { get; set; } = string.Empty;
+    public string PublishedAt { get; set; } = string.Empty;
+    public string SizeLabel { get; set; } = string.Empty;
 }

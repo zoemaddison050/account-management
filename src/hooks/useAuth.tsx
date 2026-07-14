@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, createContext, useContext } from 'react';
-import type { AuthSession, MagicLinkRequest, MagicLinkVerify } from '../types';
-import { requestMagicLink as apiRequestMagicLink, verifyMagicLink as apiVerifyMagicLink, logout as apiLogout } from '../lib/api';
+import type { AuthSession, MagicLinkRequest, MagicLinkVerify, StaffLoginVerify } from '../types';
+import { requestMagicLink as apiRequestMagicLink, verifyMagicLink as apiVerifyMagicLink, logout as apiLogout, staffLogin as apiStaffLogin } from '../lib/api';
 
 const SESSION_KEY = 'prime-exchanges.session';
 
@@ -45,6 +45,7 @@ export interface AuthContextValue {
   error: string | null;
   requestMagicLink: (payload: MagicLinkRequest) => Promise<{ email: string; expiresInMinutes: number }>;
   verifyMagicLink: (payload: MagicLinkVerify) => Promise<AuthSession>;
+  staffLogin: (payload: StaffLoginVerify) => Promise<AuthSession>;
   logout: () => void;
   clearError: () => void;
 }
@@ -112,6 +113,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const staffLogin = useCallback(async (payload: StaffLoginVerify): Promise<AuthSession> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiStaffLogin(payload);
+      saveSession(result, payload.remember ?? false);
+      setSession(result);
+      return result;
+    } catch (err: unknown) {
+      let message = 'Sign in failed. Please try again.';
+      if (err instanceof Error) {
+        if (err.message.includes('401')) {
+          message = 'Invalid email or password.';
+        } else if (err.message.includes('429')) {
+          message = 'Too many sign-in attempts. Please wait a few minutes and try again.';
+        } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          message = 'Unable to reach the server. Please check your connection and try again.';
+        }
+      }
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     setSession(null);
@@ -129,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     requestMagicLink,
     verifyMagicLink,
+    staffLogin,
     logout,
     clearError,
   };

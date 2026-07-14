@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
-import { auditEvents, formatDateTime } from '../../data/mockData';
+import { formatDateTime } from '../../data/mockData';
+import type { AuditEvent } from '../../types';
+import { getAdminAuditEvents } from '../../lib/api';
 
 const severityFilters = ['All', 'info', 'warning', 'critical'];
 const severityLabels: Record<string, string> = { info: 'Info', warning: 'Warning', critical: 'Critical' };
@@ -9,12 +11,18 @@ const severityBadges: Record<string, string> = { info: 'badge-info', warning: 'b
 export default function Audit() {
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState('All');
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = auditEvents.filter((e) => {
-    const matchesSearch = !search || e.actor.toLowerCase().includes(search.toLowerCase()) || e.action.toLowerCase().includes(search.toLowerCase()) || e.target.toLowerCase().includes(search.toLowerCase());
-    const matchesSeverity = severity === 'All' || e.severity === severity;
-    return matchesSearch && matchesSeverity;
-  });
+  useEffect(() => {
+    setLoading(true);
+    getAdminAuditEvents(severity === 'All' ? undefined : severity, search || undefined)
+      .then((data) => {
+        setEvents(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [severity, search]);
 
   return (
     <div className="fade-in">
@@ -69,39 +77,45 @@ export default function Audit() {
 
       {/* Audit timeline */}
       <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrap" style={{ border: 'none' }}>
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Severity</th>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e) => (
-                <tr key={e.id}>
-                  <td className="mono" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'var(--ink-muted)' }}>{formatDateTime(e.timestamp)}</td>
-                  <td><span className={`badge ${severityBadges[e.severity]}`}>{severityLabels[e.severity]}</span></td>
-                  <td style={{ fontWeight: 500, fontSize: '0.88rem' }}>{e.actor}</td>
-                  <td style={{ fontSize: '0.88rem', color: 'var(--navy-800)' }}>{e.action}</td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>{e.target}</td>
-                  <td style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', maxWidth: '280px' }}>{e.reason || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <p className="text-muted text-center" style={{ padding: 'var(--space-6)' }}>No audit events match your filters.</p>
+        {loading ? (
+          <p className="text-muted text-center" style={{ padding: 'var(--space-6)' }}>Loading audit trail…</p>
+        ) : (
+          <>
+            <div className="table-wrap" style={{ border: 'none' }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Severity</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Target</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e) => (
+                    <tr key={e.id}>
+                      <td className="mono" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'var(--ink-muted)' }}>{formatDateTime(e.timestamp)}</td>
+                      <td><span className={`badge ${severityBadges[e.severity]}`}>{severityLabels[e.severity]}</span></td>
+                      <td style={{ fontWeight: 500, fontSize: '0.88rem' }}>{e.actor}</td>
+                      <td style={{ fontSize: '0.88rem', color: 'var(--navy-800)' }}>{e.action}</td>
+                      <td style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>{e.target}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', maxWidth: '280px' }}>{e.reason || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {events.length === 0 && (
+              <p className="text-muted text-center" style={{ padding: 'var(--space-6)' }}>No audit events match your filters.</p>
+            )}
+          </>
         )}
       </div>
 
       <p className="text-muted" style={{ fontSize: '0.82rem', marginTop: 'var(--space-4)' }}>
-        Showing {filtered.length} of {auditEvents.length} events. In production, this log would include all role changes, approvals, invitations, document access, and data publication events.
+        Showing {events.length} event(s). In production, this log would include all role changes, approvals, invitations, document access, and data publication events.
       </p>
     </div>
   );

@@ -3,13 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import StatCard from '../../components/StatCard';
 import FreshnessIndicator from '../../components/FreshnessIndicator';
-import { getCurrentClient } from '../../lib/api';
+import { getCurrentClient, getClientActivity, getClientDocuments } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
-import type { ClientProfile } from '../../types';
-import { demoClient, formatCurrency, formatDate, activityEvents, clientDocuments } from '../../data/mockData';
+import type { ClientProfile, ActivityEvent, ClientDocument } from '../../types';
+import { demoClient, formatCurrency, formatDate } from '../../data/mockData';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<ClientProfile | null>(null);
+  const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { logout } = useAuth();
@@ -18,10 +20,17 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getCurrentClient()
-      .then((data) => {
+    
+    Promise.all([
+      getCurrentClient(),
+      getClientActivity(),
+      getClientDocuments()
+    ])
+      .then(([clientData, activityData, documentData]) => {
         if (!cancelled) {
-          setProfile(data);
+          setProfile(clientData);
+          setActivities(activityData);
+          setDocuments(documentData);
           setError(null);
         }
       })
@@ -50,8 +59,8 @@ export default function Dashboard() {
   }, [logout, navigate]);
 
   const totalValue = demoClient.portfolios.reduce((sum, p) => sum + p.totalValue, 0);
-  const recentActivity = activityEvents.slice(0, 4);
-  const recentDocs = clientDocuments.slice(0, 3);
+  const recentActivity = activities.slice(0, 4);
+  const recentDocs = documents.slice(0, 3);
 
   return (
     <div className="fade-in">

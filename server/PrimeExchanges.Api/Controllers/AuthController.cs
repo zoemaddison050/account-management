@@ -1,20 +1,53 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PrimeExchanges.Api.Services;
 
 namespace PrimeExchanges.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly IMagicLinkService _magicLinkService;
+    private readonly IStaffAuthService _staffAuthService;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IMagicLinkService magicLinkService, ILogger<AuthController> logger)
+    public AuthController(IMagicLinkService magicLinkService, IStaffAuthService staffAuthService, ILogger<AuthController> logger)
     {
         _magicLinkService = magicLinkService;
+        _staffAuthService = staffAuthService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Authenticates a staff user with email and password, returning a JWT.
+    /// </summary>
+    [HttpPost("staff-login")]
+    public async Task<ActionResult<AuthSessionResponse>> StaffLogin([FromBody] StaffLoginRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var result = await _staffAuthService.LoginAsync(request.Email, request.Password, cancellationToken);
+
+        if (!result.Success)
+        {
+            return Unauthorized(new { message = result.Error ?? "Invalid email or password." });
+        }
+
+        return Ok(new AuthSessionResponse
+        {
+            Token = result.Token!,
+            ClientId = result.UserId!,
+            ClientName = result.Name!,
+            Email = result.Email!,
+            Role = result.Role!,
+            ExpiresAt = DateTime.UtcNow.AddHours(8).ToString("O"),
+        });
     }
 
     /// <summary>
@@ -78,6 +111,18 @@ public class AuthController : ControllerBase
         _logger.LogInformation("Logout requested");
         return Ok(new { message = "Logged out successfully." });
     }
+}
+
+public class StaffLoginRequest
+{
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(100)]
+    public string Password { get; set; } = string.Empty;
 }
 
 public class MagicLinkRequest

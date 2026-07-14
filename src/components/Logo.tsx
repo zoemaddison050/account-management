@@ -6,23 +6,28 @@ interface LogoProps {
 }
 
 export default function Logo({ variant = 'dark', href = '/' }: LogoProps) {
-  if (variant === 'dark') {
-    return (
-      <Link to={href} className="brand-lockup" aria-label="PrimeXchanges account management home">
-        <img className="brand-wordmark" src="/brand/prime-exchanges-wordmark.png" alt="PrimeXchanges" />
-        <span className="brand-product-label">Account Management</span>
-      </Link>
-    );
-  }
+  const isDark = variant === 'dark';
 
   return (
-    <Link to={href} className="brand-lockup" aria-label="PrimeXchanges account management home">
-      <img className="brand-icon" src="/brand/prime-exchanges-icon.png" alt="" aria-hidden="true" />
+    <Link to={href} className="brand-lockup" aria-label="PrimeXchanges home">
+      <img
+        className="brand-icon"
+        src="/brand/prime-exchanges-icon.png"
+        alt=""
+        aria-hidden="true"
+      />
       <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.08 }}>
-        <span style={{ fontSize: '1rem', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--white)' }}>
-          PRIME<span style={{ color: 'var(--brand-blue)' }}>X</span><span style={{ color: 'var(--gold-400)' }}>CHANGES</span>
+        <span
+          style={{
+            fontSize: '1rem',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            color: isDark ? 'var(--navy-900)' : 'var(--white)',
+          }}
+        >
+          PRIME<span style={{ color: 'var(--brand-blue)' }}>X</span>
+          <span style={{ color: 'var(--gold-400)' }}>CHANGES</span>
         </span>
-        <span className="brand-product-label">Account Management</span>
       </span>
     </Link>
   );

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { demoClient } from '../data/mockData';
+import { useAuth } from '../hooks/useAuth';
 
 const clientNav = [
   { label: 'Dashboard', to: '/client/dashboard', icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
@@ -14,6 +15,10 @@ const clientNav = [
 
 export default function ClientLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { session, logout } = useAuth();
+
+  const clientName = session?.clientName || demoClient.name;
+  const clientRef = session?.clientId || demoClient.reference;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -39,15 +44,19 @@ export default function ClientLayout() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <div className="hide-mobile" style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{demoClient.name}</p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--navy-300)' }}>{demoClient.reference}</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{clientName}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--navy-300)' }}>{clientRef}</p>
             </div>
             <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold-400), var(--gold-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--navy-900)', fontSize: '0.9rem' }}>
-              {demoClient.name.split(' ').map((n) => n[0]).join('')}
+              {clientName.split(' ').map((n) => n[0]).join('')}
             </div>
-            <Link to="/" className="btn btn-ghost hide-mobile" style={{ color: 'var(--navy-200)', fontSize: '0.85rem' }}>
+            <button
+              onClick={logout}
+              className="btn btn-ghost hide-mobile"
+              style={{ color: 'var(--navy-200)', fontSize: '0.85rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
+            >
               Sign Out
-            </Link>
+            </button>
             <button
               type="button"
               className="btn btn-ghost nav-mobile-toggle"
@@ -61,7 +70,7 @@ export default function ClientLayout() {
           </div>
         </div>
       </header>
-
+ 
       {mobileMenuOpen && (
         <nav className="workspace-mobile-nav" aria-label="Client navigation">
           {clientNav.map((item) => (
@@ -69,7 +78,12 @@ export default function ClientLayout() {
               {item.label}
             </NavLink>
           ))}
-          <Link to="/">Sign out</Link>
+          <button
+            onClick={() => { setMobileMenuOpen(false); logout(); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.7rem 0.9rem', background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer' }}
+          >
+            Sign out
+          </button>
         </nav>
       )}
 

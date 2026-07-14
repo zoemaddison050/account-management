@@ -7,6 +7,7 @@ export interface ApplicationDraft {
   preferredManager: string;
   submittedAt: string;
   policyVersion: string;
+  pdfToken?: string;
 }
 
 const draftKey = 'prime-exchanges.application-draft';

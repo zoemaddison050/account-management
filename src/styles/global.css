@@ -336,12 +336,6 @@ select.form-control { cursor: pointer; }
 .divider-soft { height: 1px; background: var(--line-soft); border: none; }
 
 /* PrimeXchanges public brand components */
-.brand-wordmark {
-  width: clamp(132px, 15vw, 188px);
-  height: 52px;
-  object-fit: contain;
-  object-position: center;
-}
 .brand-lockup {
   display: inline-flex;
   align-items: center;
@@ -695,5 +689,4 @@ select.form-control { cursor: pointer; }
   .application-step { padding: var(--space-3) var(--space-4); }
   .application-document-card { align-items: flex-start; }
   .application-summary { grid-template-columns: 1fr; }
-  .brand-wordmark { width: 126px; height: 46px; }
 }
