@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 import { statusColors, formatDateTime, relativeTime } from '../../data/mockData';
-import type { Application } from '../../types';
+import type { AccountManager, Application } from '../../types';
 import {
   getAdminStats,
   getAdminApplications,
   getAdminApplicationDetail,
   updateApplicationStatus,
-  addApplicationNote
+  addApplicationNote,
+  getAdminManagers,
+  issueApplicationInvitation
 } from '../../lib/api';
 
 const statusFilters = ['All', 'Inquiry submitted', 'Form downloaded', 'Application received', 'Under review', 'Information requested', 'Approval pending', 'Approved — activation pending', 'Active client', 'Declined', 'Paused / closed'];
@@ -22,8 +25,13 @@ export default function Applications() {
   const [loading, setLoading] = useState(true);
   const [noteText, setNoteText] = useState('');
   const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, declined: 0 });
+  const [managers, setManagers] = useState<AccountManager[]>([]);
+  const [selectedManagerId, setSelectedManagerId] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [invitationMessage, setInvitationMessage] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
 
-  const fetchApps = () => {
+  const fetchApps = useCallback(() => {
     setLoading(true);
     getAdminApplications(filter === 'All' ? undefined : filter, search || undefined)
       .then((data) => {
@@ -31,21 +39,33 @@ export default function Applications() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, [filter, search]);
 
   useEffect(() => {
     fetchApps();
-  }, [filter, search]);
+  }, [fetchApps]);
 
   useEffect(() => {
     getAdminStats().then(setStats).catch(() => {});
   }, [apps]);
 
+  useEffect(() => {
+    getAdminManagers().then(setManagers).catch(() => {});
+  }, []);
+
   const selectApp = (app: Application) => {
     setSelected(app);
     setSelectedDetail(null);
+    setActionError('');
+    setInvitationMessage('');
+    const matchingManager = managers.find((m) => m.name === app.assignedReviewer);
+    setSelectedManagerId(matchingManager?.id ?? '');
     getAdminApplicationDetail(app.id)
-      .then((detail) => setSelectedDetail(detail))
+      .then((detail) => {
+        setSelectedDetail(detail);
+        const detailManager = managers.find((m) => m.name === detail.assignedReviewer);
+        setSelectedManagerId(detailManager?.id ?? matchingManager?.id ?? '');
+      })
       .catch(() => setSelectedDetail(app));
   };
 
@@ -65,9 +85,16 @@ export default function Applications() {
 
   const handleUpdateStatus = (status: string) => {
     if (!selected) return;
+    setActionError('');
+    const managerRequired = status === 'Approved — activation pending';
+    if (managerRequired && !selectedManagerId) {
+      setActionError('Select an active account manager before activating this client.');
+      return;
+    }
     const reason = prompt(`Enter reason for changing status to "${status}":`);
     if (reason === null) return; // cancelled
-    updateApplicationStatus(selected.id, status, reason || undefined)
+    const managerId = selectedManagerId || undefined;
+    updateApplicationStatus(selected.id, status, reason || undefined, managerId)
       .then(() => {
         fetchApps();
         return getAdminApplicationDetail(selected.id);
@@ -76,7 +103,25 @@ export default function Applications() {
         setSelectedDetail(detail);
         setSelected(detail);
       })
-      .catch(() => {});
+      .catch((error) => setActionError(error instanceof Error ? error.message : 'Status update failed.'));
+  };
+
+  const handleSendInvitation = async () => {
+    if (!selected) return;
+    setActionError('');
+    setInvitationMessage('');
+    setSendingInvite(true);
+    try {
+      const result = await issueApplicationInvitation(selected.id, 'Invitation issued from admin application drawer');
+      setInvitationMessage(`Invitation sent. Expires ${formatDateTime(result.expiresAt)}.`);
+      const detail = await getAdminApplicationDetail(selected.id);
+      setSelectedDetail(detail);
+      setSelected(detail);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to send invitation.');
+    } finally {
+      setSendingInvite(false);
+    }
   };
 
   return (
@@ -118,6 +163,7 @@ export default function Applications() {
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', flex: 1 }}>
           {statusFilters.map((t) => (
             <button
+              type="button"
               key={t}
               onClick={() => setFilter(t)}
               className="btn"
@@ -161,7 +207,19 @@ export default function Applications() {
                 </thead>
                 <tbody>
                   {apps.map((a) => (
-                    <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => selectApp(a)}>
+                    <tr
+                      key={a.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => selectApp(a)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          selectApp(a);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                    >
                       <td className="mono" style={{ fontWeight: 600, color: 'var(--navy-700)' }}>{a.reference}</td>
                       <td>
                         <p style={{ fontWeight: 500, color: 'var(--navy-800)' }}>{a.applicantName}</p>
@@ -195,6 +253,7 @@ export default function Applications() {
       {/* Detail drawer */}
       {selected && (
         <div
+          role="presentation"
           style={{ position: 'fixed', inset: 0, background: 'rgba(7,22,48,0.5)', zIndex: 200, display: 'flex', justifyContent: 'flex-end', animation: 'fadeIn 0.2s ease' }}
           onClick={() => { setSelected(null); setSelectedDetail(null); }}
         >
@@ -207,7 +266,7 @@ export default function Applications() {
                 <p className="mono" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy-600)' }}>{selected.reference}</p>
                 <h2 style={{ fontSize: '1.4rem', marginTop: 'var(--space-1)' }}>{selected.applicantName}</h2>
               </div>
-              <button onClick={() => { setSelected(null); setSelectedDetail(null); }} className="btn btn-ghost" style={{ padding: '0.3rem' }} aria-label="Close detail panel">
+              <button type="button" onClick={() => { setSelected(null); setSelectedDetail(null); }} className="btn btn-ghost" style={{ padding: '0.3rem' }} aria-label="Close detail panel">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -239,8 +298,8 @@ export default function Applications() {
               <p className="text-muted" style={{ fontSize: '0.85rem' }}>Loading notes & audit trail…</p>
             ) : selectedDetail.notes.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                {selectedDetail.notes.map((n, i) => (
-                  <div key={i} style={{ padding: 'var(--space-3)', background: 'var(--navy-50)', borderRadius: 'var(--radius)', border: '1px solid var(--line)' }}>
+                {selectedDetail.notes.map((n) => (
+                  <div key={`${n.date}-${n.author}-${n.text.slice(0, 24)}`} style={{ padding: 'var(--space-3)', background: 'var(--navy-50)', borderRadius: 'var(--radius)', border: '1px solid var(--line)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
                       <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--navy-700)' }}>{n.author}</span>
                       <span style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>{formatDateTime(n.date)}</span>
@@ -264,6 +323,7 @@ export default function Applications() {
                 onChange={(e) => setNoteText(e.target.value)}
               />
               <button
+                type="button"
                 onClick={handleAddNote}
                 className="btn btn-secondary btn-block"
                 style={{ fontSize: '0.85rem' }}
@@ -275,12 +335,58 @@ export default function Applications() {
 
             <hr className="divider" />
 
+            {/* Manager assignment */}
+            <h3 style={{ fontSize: '1rem', marginBottom: 'var(--space-3)' }}>Manager Assignment</h3>
+            <select
+              aria-label="Assigned account manager"
+              className="form-control"
+              value={selectedManagerId}
+              onChange={(e) => setSelectedManagerId(e.target.value)}
+              style={{ marginBottom: 'var(--space-3)' }}
+            >
+              <option value="">Select an active account manager</option>
+              {managers.reduce<ReactNode[]>((options, m) => {
+                if (m.status !== 'active') return options;
+                options.push(
+                  <option key={m.id} value={m.id}>
+                    {m.name} · {m.activeClients}/{m.capacity} clients
+                  </option>
+                );
+                return options;
+              }, [])}
+            </select>
+            {actionError && (
+              <div className="alert alert-danger" style={{ fontSize: '0.85rem', marginBottom: 'var(--space-3)' }}>
+                {actionError}
+              </div>
+            )}
+            {invitationMessage && (
+              <div className="alert alert-success" style={{ fontSize: '0.85rem', marginBottom: 'var(--space-3)' }}>
+                {invitationMessage}
+              </div>
+            )}
+
+            {selected.status === 'Approved — activation pending' && (
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                onClick={handleSendInvitation}
+                disabled={sendingInvite || !selectedManagerId}
+                style={{ marginBottom: 'var(--space-3)' }}
+              >
+                {sendingInvite ? 'Sending invitation...' : 'Send Client Invitation'}
+              </button>
+            )}
+
+            <hr className="divider" />
+
             {/* Status actions */}
             <h3 style={{ fontSize: '1rem', marginBottom: 'var(--space-3)' }}>Change Status</h3>
             <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: 'var(--space-3)' }}>Every status change is logged with actor, time, and reason.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-              {['Under review', 'Information requested', 'Approval pending', 'Approved — activation pending', 'Active client', 'Declined'].map((s) => (
+              {['Under review', 'Information requested', 'Approval pending', 'Approved — activation pending', 'Declined'].map((s) => (
                 <button
+                  type="button"
                   key={s}
                   onClick={() => handleUpdateStatus(s)}
                   className="btn"

@@ -58,6 +58,22 @@ export interface SubmitApplicationResponse {
   message: string;
 }
 
+export interface UpsertAccountManagerRequest {
+  name: string;
+  title: string;
+  email: string;
+  activeClients: number;
+  capacity: number;
+  status: AccountManager['status'];
+}
+
+export interface InvitationPreview {
+  reference: string;
+  applicantName: string;
+  email: string;
+  assignedManager: string;
+  expiresAt: string;
+}
 
 /**
  * Reads the current JWT token from local/session storage.
@@ -73,7 +89,7 @@ function getAuthToken(): string | null {
         storage.removeItem(SESSION_KEY);
         continue;
       }
-      return parsed.token;
+      return parsed.token ?? null;
     }
   } catch {
     // Ignore storage parse errors
@@ -99,6 +115,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     throw new Error(`API ${res.status}: ${res.statusText} for ${path}`);
+  }
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined as T;
   }
   return res.json() as Promise<T>;
 }
@@ -244,6 +267,56 @@ export async function submitApplication(payload: SubmitApplicationRequest): Prom
 }
 
 /**
+ * Saves an application draft to the server.
+ */
+export async function apiSaveDraft(email: string, draftDataJson: string): Promise<void> {
+  if (!isApiConfigured) {
+    localStorage.setItem(`px-draft-${email.trim().toLowerCase()}`, draftDataJson);
+    return;
+  }
+  await apiFetch<void>('/applications/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, draftDataJson }),
+  });
+}
+
+/**
+ * Requests a verification code to resume a draft.
+ */
+export async function apiRequestDraftResume(email: string): Promise<void> {
+  if (!isApiConfigured) {
+    return;
+  }
+  await apiFetch<void>('/applications/draft/request-resume', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Verifies code and resumes an application draft.
+ */
+export async function apiResumeDraft(email: string, code: string): Promise<{ email: string; draftDataJson: string }> {
+  if (!isApiConfigured) {
+    const data = localStorage.getItem(`px-draft-${email.trim().toLowerCase()}`);
+    if (!data) {
+      throw new Error('API 400: No draft found for this email');
+    }
+    if (code !== '123456') {
+      throw new Error('API 400: Invalid verification code');
+    }
+    return { email, draftDataJson: data };
+  }
+  return apiFetch<{ email: string; draftDataJson: string }>('/applications/draft/resume', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+/**
  * Log in a staff member using email and password.
  */
 export async function staffLogin(payload: StaffLoginVerify): Promise<AuthSession> {
@@ -265,6 +338,30 @@ export async function staffLogin(payload: StaffLoginVerify): Promise<AuthSession
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: payload.email, password: payload.password }),
+  });
+}
+
+/**
+ * Verify staff MFA code.
+ */
+export async function staffMfaVerify(mfaToken: string, code: string): Promise<AuthSession> {
+  if (!isApiConfigured) {
+    if (code !== '123456') {
+      throw new Error('API 401: Invalid MFA code');
+    }
+    return {
+      token: `dev-staff-token-mfa-${Date.now()}`,
+      clientId: 'USR-001',
+      clientName: 'Prime Accounts Admin',
+      email: 'accounts@primexchanges.com',
+      role: 'Administrator',
+      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return apiFetch<AuthSession>('/auth/staff-mfa-verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfaToken, code }),
   });
 }
 
@@ -344,7 +441,7 @@ export async function getAdminApplicationDetail(id: string): Promise<Application
 /**
  * Update the status of an application.
  */
-export async function updateApplicationStatus(id: string, status: string, reason?: string): Promise<void> {
+export async function updateApplicationStatus(id: string, status: string, reason?: string, managerId?: string): Promise<void> {
   if (!isApiConfigured) {
     await new Promise((resolve) => setTimeout(resolve, 400));
     const app = applications.find(a => a.id === id);
@@ -361,7 +458,7 @@ export async function updateApplicationStatus(id: string, status: string, reason
   await apiFetch<void>(`/admin/applications/${id}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status, reason }),
+    body: JSON.stringify({ status, reason, managerId }),
   });
 }
 
@@ -389,6 +486,62 @@ export async function addApplicationNote(id: string, text: string): Promise<void
 }
 
 /**
+ * Issue a single-use client invitation for an approved application.
+ */
+export async function issueApplicationInvitation(id: string, reason?: string): Promise<{ invitationId: string; expiresAt: string; invitationUrl: string }> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      invitationId: `INV-${Date.now()}`,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+      invitationUrl: `${window.location.origin}/invite/mock-invitation-token`,
+    };
+  }
+  return apiFetch<{ invitationId: string; expiresAt: string; invitationUrl: string }>(`/admin/applications/${id}/invitation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, expiresInHours: 72 }),
+  });
+}
+
+/**
+ * Preview a client invitation by token.
+ */
+export async function getInvitationPreview(token: string): Promise<InvitationPreview> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return {
+      reference: 'PX-2600000',
+      applicantName: 'Demo Applicant',
+      email: 'demo@primexchanges.com',
+      assignedManager: 'Prime Accounts Team',
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return apiFetch<InvitationPreview>(`/invitations/${encodeURIComponent(token)}`);
+}
+
+/**
+ * Accept a client invitation and return a signed-in client session.
+ */
+export async function acceptInvitation(token: string): Promise<AuthSession> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return {
+      token: `dev-invite-token-${Date.now()}`,
+      clientId: 'CL-2026-0001',
+      clientName: 'Demo Applicant',
+      email: 'demo@primexchanges.com',
+      role: 'client',
+      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+  return apiFetch<AuthSession>(`/invitations/${encodeURIComponent(token)}/accept`, {
+    method: 'POST',
+  });
+}
+
+/**
  * Fetch all clients.
  */
 export async function getAdminClients(): Promise<Client[]> {
@@ -408,6 +561,44 @@ export async function getAdminManagers(): Promise<AccountManager[]> {
     return accountManagers;
   }
   return apiFetch<AccountManager[]>('/admin/managers');
+}
+
+/**
+ * Create an account manager.
+ */
+export async function createAdminManager(payload: UpsertAccountManagerRequest): Promise<AccountManager> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const manager: AccountManager = {
+      id: `MGR-${String(accountManagers.length + 1).padStart(3, '0')}`,
+      ...payload,
+    };
+    accountManagers.push(manager);
+    return manager;
+  }
+  return apiFetch<AccountManager>('/admin/managers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Update an account manager.
+ */
+export async function updateAdminManager(id: string, payload: UpsertAccountManagerRequest): Promise<AccountManager> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const index = accountManagers.findIndex((m) => m.id === id);
+    if (index === -1) throw new Error('API 404: Manager not found');
+    accountManagers[index] = { ...accountManagers[index], ...payload };
+    return accountManagers[index];
+  }
+  return apiFetch<AccountManager>(`/admin/managers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
@@ -431,4 +622,3 @@ export async function getAdminAuditEvents(severity?: string, search?: string): P
   if (search) params.append('search', search);
   return apiFetch<AuditEvent[]>(`/admin/audit?${params.toString()}`);
 }
-

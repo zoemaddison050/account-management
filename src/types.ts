@@ -167,12 +167,14 @@ export interface MagicLinkVerify {
 }
 
 export interface AuthSession {
-  token: string;
+  token?: string;
   clientId: string;
   clientName: string;
   email: string;
   role: 'client' | 'Administrator' | 'OperationsReviewer' | 'ComplianceApprover' | 'AccountManager';
   expiresAt: string;
+  requiresMfa?: boolean;
+  mfaToken?: string;
 }
 
 export interface ClientProfile {

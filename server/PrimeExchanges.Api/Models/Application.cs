@@ -32,6 +32,9 @@ public class Application
     [MaxLength(200)]
     public string AssignedReviewer { get; set; } = string.Empty;
 
+    [MaxLength(50)]
+    public string? AssignedManagerId { get; set; }
+
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;

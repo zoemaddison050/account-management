@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
     public DbSet<PdfGrant> PdfGrants => Set<PdfGrant>();
+    public DbSet<ApplicationDraft> ApplicationDrafts => Set<ApplicationDraft>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -77,6 +78,11 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.HasIndex(e => e.ApplicationId);
+        });
+
+        modelBuilder.Entity<ApplicationDraft>(entity =>
+        {
+            entity.HasIndex(e => e.Email).IsUnique();
         });
     }
 }

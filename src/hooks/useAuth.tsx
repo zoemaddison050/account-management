@@ -1,18 +1,22 @@
 import { useState, useCallback, useEffect, createContext, useContext } from 'react';
 import type { AuthSession, MagicLinkRequest, MagicLinkVerify, StaffLoginVerify } from '../types';
-import { requestMagicLink as apiRequestMagicLink, verifyMagicLink as apiVerifyMagicLink, logout as apiLogout, staffLogin as apiStaffLogin } from '../lib/api';
+import {
+  requestMagicLink as apiRequestMagicLink,
+  verifyMagicLink as apiVerifyMagicLink,
+  logout as apiLogout,
+  staffLogin as apiStaffLogin,
+  staffMfaVerify as apiStaffMfaVerify,
+  acceptInvitation as apiAcceptInvitation
+} from '../lib/api';
 
 const SESSION_KEY = 'prime-exchanges.session';
 
 function loadSession(): AuthSession | null {
   try {
-    // Check both stores — the user may have logged in with remember=true
-    // previously, or without it (sessionStorage only).
     for (const storage of [localStorage, sessionStorage]) {
       const raw = storage.getItem(SESSION_KEY);
       if (!raw) continue;
       const parsed = JSON.parse(raw) as AuthSession;
-      // Check expiry
       if (new Date(parsed.expiresAt).getTime() < Date.now()) {
         storage.removeItem(SESSION_KEY);
         continue;
@@ -27,7 +31,6 @@ function loadSession(): AuthSession | null {
 
 function saveSession(session: AuthSession, remember: boolean) {
   const storage = remember ? localStorage : sessionStorage;
-  // Clear the other store to avoid stale sessions
   const other = remember ? sessionStorage : localStorage;
   other.removeItem(SESSION_KEY);
   storage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -45,7 +48,9 @@ export interface AuthContextValue {
   error: string | null;
   requestMagicLink: (payload: MagicLinkRequest) => Promise<{ email: string; expiresInMinutes: number }>;
   verifyMagicLink: (payload: MagicLinkVerify) => Promise<AuthSession>;
+  acceptInvitation: (token: string) => Promise<AuthSession>;
   staffLogin: (payload: StaffLoginVerify) => Promise<AuthSession>;
+  staffMfaVerify: (mfaToken: string, code: string, remember: boolean) => Promise<AuthSession>;
   logout: () => void;
   clearError: () => void;
 }
@@ -95,7 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: unknown) {
       let message = 'Sign in failed. Please try again.';
       if (err instanceof Error) {
-        // Parse HTTP error codes from apiFetch's error format: "API 401: ..."
         if (err.message.includes('401')) {
           message = 'Invalid or expired code. Please check your code and try again.';
         } else if (err.message.includes('429')) {
@@ -118,8 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const result = await apiStaffLogin(payload);
-      saveSession(result, payload.remember ?? false);
-      setSession(result);
+      if (!result.requiresMfa) {
+        saveSession(result, payload.remember ?? false);
+        setSession(result);
+      }
       return result;
     } catch (err: unknown) {
       let message = 'Sign in failed. Please try again.';
@@ -139,11 +145,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const staffMfaVerify = useCallback(async (mfaToken: string, code: string, remember: boolean): Promise<AuthSession> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiStaffMfaVerify(mfaToken, code);
+      saveSession(result, remember);
+      setSession(result);
+      return result;
+    } catch (err: unknown) {
+      let message = 'Verification failed. Please try again.';
+      if (err instanceof Error) {
+        if (err.message.includes('401')) {
+          message = 'Invalid MFA code.';
+        } else if (err.message.includes('429')) {
+          message = 'Too many attempts. Please wait a few minutes.';
+        } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          message = 'Unable to reach the server. Please check your connection and try again.';
+        }
+      }
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const acceptInvitation = useCallback(async (token: string): Promise<AuthSession> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiAcceptInvitation(token);
+      saveSession(result, false);
+      setSession(result);
+      return result;
+    } catch (err: unknown) {
+      let message = 'Unable to accept this invitation. Please request a new invitation from support.';
+      if (err instanceof Error) {
+        if (err.message.includes('400')) {
+          message = 'This invitation is invalid, expired, or has already been used.';
+        } else if (err.message.includes('429')) {
+          message = 'Too many attempts. Please wait a few minutes and try again.';
+        } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          message = 'Unable to reach the server. Please check your connection and try again.';
+        }
+      }
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     setSession(null);
     setError(null);
-    // Best-effort server-side revocation
     void apiLogout();
   }, []);
 
@@ -156,7 +213,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     requestMagicLink,
     verifyMagicLink,
+    acceptInvitation,
     staffLogin,
+    staffMfaVerify,
     logout,
     clearError,
   };

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PrimeExchanges.Api.Data;
 using PrimeExchanges.Api.Models;
+using PrimeExchanges.Api.Services;
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Pdf;
 using System.IO;
@@ -16,6 +17,7 @@ namespace PrimeExchanges.Api.Controllers;
 public class ApplicationsController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly IEmailService _emailService;
     private readonly ILogger<ApplicationsController> _logger;
 
     // Approved application status values
@@ -32,9 +34,10 @@ public class ApplicationsController : ControllerBase
         "Paused / closed",
     ];
 
-    public ApplicationsController(AppDbContext dbContext, ILogger<ApplicationsController> logger)
+    public ApplicationsController(AppDbContext dbContext, IEmailService emailService, ILogger<ApplicationsController> logger)
     {
         _dbContext = dbContext;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -125,7 +128,34 @@ public class ApplicationsController : ControllerBase
             ExpiresAt = DateTime.UtcNow.AddMinutes(30),
         });
 
+        // Remove application draft if one exists
+        var existingDraft = await _dbContext.ApplicationDrafts
+            .FirstOrDefaultAsync(d => d.Email == normalizedEmail, cancellationToken);
+        if (existingDraft != null)
+        {
+            _dbContext.ApplicationDrafts.Remove(existingDraft);
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _emailService.SendApplicationSubmittedAlertAsync(
+                reference,
+                application.ApplicantName,
+                normalizedEmail,
+                application.Country,
+                application.AssignedReviewer,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application notification email failed. Id={ApplicationId} Ref={Reference}",
+                applicationId,
+                reference);
+        }
 
         _logger.LogInformation(
             "Application submitted. Id={ApplicationId} Ref={Reference} Email={Email}",
@@ -386,6 +416,98 @@ public class ApplicationsController : ControllerBase
         document.Save(outputMs);
         return outputMs.ToArray();
     }
+
+    /// <summary>
+    /// Saves an application draft for the given email.
+    /// </summary>
+    [HttpPost("draft")]
+    public async Task<IActionResult> SaveDraft([FromBody] SaveDraftRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        var draft = await _dbContext.ApplicationDrafts.FirstOrDefaultAsync(d => d.Email == normalizedEmail, cancellationToken);
+        if (draft == null)
+        {
+            draft = new ApplicationDraft
+            {
+                Email = normalizedEmail,
+                DraftDataJson = request.DraftDataJson,
+                LastSavedAt = DateTime.UtcNow
+            };
+            _dbContext.ApplicationDrafts.Add(draft);
+        }
+        else
+        {
+            draft.DraftDataJson = request.DraftDataJson;
+            draft.LastSavedAt = DateTime.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new { message = "Draft saved successfully." });
+    }
+
+    /// <summary>
+    /// Sends a 6-digit verification code to the email if a draft exists.
+    /// </summary>
+    [HttpPost("draft/request-resume")]
+    public async Task<IActionResult> RequestResume([FromBody] RequestResumeRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        var draft = await _dbContext.ApplicationDrafts.FirstOrDefaultAsync(d => d.Email == normalizedEmail, cancellationToken);
+        if (draft == null)
+        {
+            _logger.LogInformation("Resume draft requested for email with no draft: {Email}", normalizedEmail);
+            return Ok(new { message = "If a draft exists for this email, a verification code has been sent." });
+        }
+
+        var code = Random.Shared.Next(100000, 999999).ToString();
+        draft.VerificationCode = code;
+        draft.VerificationCodeExpiresAt = DateTime.UtcNow.AddMinutes(15);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _emailService.SendDraftResumeCodeAsync(
+            normalizedEmail,
+            code,
+            cancellationToken
+        );
+
+        return Ok(new { message = "If a draft exists for this email, a verification code has been sent." });
+    }
+
+    /// <summary>
+    /// Verifies the code and returns the saved application draft JSON.
+    /// </summary>
+    [HttpPost("draft/resume")]
+    public async Task<ActionResult<ResumeDraftResponse>> ResumeDraft([FromBody] ResumeDraftRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        var draft = await _dbContext.ApplicationDrafts.FirstOrDefaultAsync(d => d.Email == normalizedEmail, cancellationToken);
+        if (draft == null || draft.VerificationCode != request.Code || draft.VerificationCodeExpiresAt < DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Invalid or expired verification code." });
+        }
+
+        draft.VerificationCode = null;
+        draft.VerificationCodeExpiresAt = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new ResumeDraftResponse
+        {
+            Email = draft.Email,
+            DraftDataJson = draft.DraftDataJson
+        });
+    }
 }
 
 // ─── Request / Response DTOs ───────────────────────────────────────────────
@@ -438,4 +560,41 @@ public class SubmitApplicationResponse
     public string? Reference { get; set; }
     public string? PdfToken { get; set; }
     public string Message { get; set; } = string.Empty;
+}
+
+public class SaveDraftRequest
+{
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    public string DraftDataJson { get; set; } = string.Empty;
+}
+
+public class RequestResumeRequest
+{
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ResumeDraftRequest
+{
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [RegularExpression(@"^\d{6}$", ErrorMessage = "Code must be 6 digits.")]
+    public string Code { get; set; } = string.Empty;
+}
+
+public class ResumeDraftResponse
+{
+    public string Email { get; set; } = string.Empty;
+    public string DraftDataJson { get; set; } = string.Empty;
 }

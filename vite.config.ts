@@ -15,7 +15,7 @@ export default defineConfig({
       // development. Adjust the target to match your local backend port.
       // In production, the SPA and /api are served from the same origin.
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5062',
         changeOrigin: true,
       },
     },

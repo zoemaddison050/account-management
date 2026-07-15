@@ -12,4 +12,6 @@ public record StaffLoginResult(
     string? Name = null,
     string? Email = null,
     string? Role = null,
-    string? Error = null);
+    string? Error = null,
+    bool RequiresMfa = false,
+    string? MfaToken = null);

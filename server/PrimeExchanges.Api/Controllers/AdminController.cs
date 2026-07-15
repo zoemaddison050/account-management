@@ -1,10 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PrimeExchanges.Api.Data;
 using PrimeExchanges.Api.Models;
+using PrimeExchanges.Api.Services;
 
 namespace PrimeExchanges.Api.Controllers;
 
@@ -14,11 +17,38 @@ namespace PrimeExchanges.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly IEmailService _emailService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AdminController> _logger;
+    private static readonly HashSet<string> ValidApplicationStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Inquiry submitted",
+        "Form downloaded",
+        "Application received",
+        "Under review",
+        "Information requested",
+        "Approval pending",
+        "Approved — activation pending",
+        "Active client",
+        "Declined",
+        "Paused / closed",
+    };
+    private static readonly HashSet<string> ValidManagerStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "active",
+        "at capacity",
+        "inactive",
+    };
 
-    public AdminController(AppDbContext dbContext, ILogger<AdminController> logger)
+    public AdminController(
+        AppDbContext dbContext,
+        IEmailService emailService,
+        IConfiguration configuration,
+        ILogger<AdminController> logger)
     {
         _dbContext = dbContext;
+        _emailService = emailService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -66,6 +96,23 @@ public class AdminController : ControllerBase
         CancellationToken cancellationToken)
     {
         var query = _dbContext.Applications.AsNoTracking().AsQueryable();
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
+        {
+            var manager = await _dbContext.AccountManagers
+                .FirstOrDefaultAsync(m => m.Email == userEmail, cancellationToken);
+            if (manager != null)
+            {
+                query = query.Where(a => a.AssignedManagerId == manager.ManagerId || a.AssignedReviewer == manager.Name);
+            }
+            else
+            {
+                query = query.Where(a => false);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase))
         {
@@ -115,6 +162,19 @@ public class AdminController : ControllerBase
         if (app == null)
         {
             return NotFound(new { message = "Application not found." });
+        }
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
+        {
+            var manager = await _dbContext.AccountManagers
+                .FirstOrDefaultAsync(m => m.Email == userEmail, cancellationToken);
+            if (manager == null || (app.AssignedManagerId != manager.ManagerId && app.AssignedReviewer != manager.Name))
+            {
+                return StatusCode(403, new { message = "You are not authorized to view this application." });
+            }
         }
 
         // Fetch notes/timeline events from the AuditEvents table
@@ -174,12 +234,86 @@ public class AdminController : ControllerBase
             return NotFound(new { message = "Application not found." });
         }
 
+        if (!ValidApplicationStatuses.Contains(request.Status))
+        {
+            return BadRequest(new { message = "Invalid application status." });
+        }
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+
+        // Role restriction checks
+        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { message = "Account Managers are not authorized to modify application statuses." });
+        }
+
+        if (string.Equals(role, "OperationsReviewer", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(request.Status, "Approved — activation pending", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(403, new { message = "Operations Reviewers are not authorized to approve applications. Compliance approval is required." });
+            }
+        }
+
+        // Status sequence transition checks
         var oldStatus = app.Status;
+
+        // If not Administrator, enforce transition constraints
+        if (!string.Equals(role, "Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            // If already in a terminal state, don't allow changing it
+            if (string.Equals(oldStatus, "Declined", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(oldStatus, "Paused / closed", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(oldStatus, "Active client", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = $"Cannot modify status because the application is already in a terminal state: {oldStatus}." });
+            }
+
+            // Enforce that approval can only happen from a review state
+            if (string.Equals(request.Status, "Approved — activation pending", StringComparison.OrdinalIgnoreCase))
+            {
+                var allowedPreApprovalStates = new[] { "Under review", "Approval pending", "Information requested", "Application received", "Inquiry submitted" };
+                if (!allowedPreApprovalStates.Contains(oldStatus, StringComparer.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { message = $"Applications cannot be approved directly from the '{oldStatus}' state." });
+                }
+            }
+        }
+
+        if (string.Equals(request.Status, "Active client", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Use the invitation workflow to activate a client." });
+        }
+
+        AccountManager? selectedManager = null;
+        if (!string.IsNullOrWhiteSpace(request.ManagerId))
+        {
+            selectedManager = await _dbContext.AccountManagers
+                .FirstOrDefaultAsync(m => m.ManagerId == request.ManagerId, cancellationToken);
+
+            if (selectedManager == null)
+            {
+                return BadRequest(new { message = "Selected account manager was not found." });
+            }
+
+            if (!string.Equals(selectedManager.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.Status, "Declined", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.Status, "Paused / closed", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Selected account manager is not active." });
+            }
+        }
+
         app.Status = request.Status;
         app.LastUpdated = DateTime.UtcNow;
 
-        var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name ?? "system";
-        var actorName = User.FindFirstValue(ClaimTypes.Name) ?? "Staff User";
+        if (selectedManager != null)
+        {
+            app.AssignedReviewer = selectedManager.Name;
+            app.AssignedManagerId = selectedManager.ManagerId;
+        }
+
+        var (actorId, actorName) = GetActor();
 
         // Create an audit event
         _dbContext.AuditEvents.Add(new AuditEvent
@@ -192,47 +326,9 @@ public class AdminController : ControllerBase
             ActorName = actorName,
             Before = oldStatus,
             After = request.Status,
-            Reason = request.Reason,
+            Reason = BuildStatusChangeReason(request.Reason, selectedManager),
             Timestamp = DateTime.UtcNow
         });
-
-        // If the application is approved, also automatically register/activate the client!
-        if (request.Status == "Active client" && oldStatus != "Active client")
-        {
-            var existingClient = await _dbContext.Clients.FirstOrDefaultAsync(c => c.Email == app.Email, cancellationToken);
-            if (existingClient == null)
-            {
-                // Assign a manager if none assigned, default to Eleanor
-                var managerId = "MGR-001";
-                var managerName = "Eleanor Whitfield";
-
-                var newClient = new Client
-                {
-                    ClientId = $"CL-{DateTime.UtcNow.Year}-{new Random().Next(1000, 9999)}",
-                    Name = app.ApplicantName,
-                    Email = app.Email,
-                    ManagerId = managerId,
-                    ManagerName = managerName,
-                    Since = DateTime.UtcNow,
-                    Status = "active"
-                };
-
-                _dbContext.Clients.Add(newClient);
-
-                _dbContext.AuditEvents.Add(new AuditEvent
-                {
-                    AuditEventId = Guid.NewGuid().ToString(),
-                    EntityType = "Client",
-                    EntityId = newClient.ClientId,
-                    Action = "Created",
-                    ActorId = actorId,
-                    ActorName = actorName,
-                    Before = null,
-                    After = $"Email={newClient.Email}|Manager={managerName}",
-                    Timestamp = DateTime.UtcNow
-                });
-            }
-        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -263,8 +359,7 @@ public class AdminController : ControllerBase
             return NotFound(new { message = "Application not found." });
         }
 
-        var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name ?? "system";
-        var actorName = User.FindFirstValue(ClaimTypes.Name) ?? "Staff User";
+        var (actorId, actorName) = GetActor();
 
         // Create an audit event for the note (so it forms part of the history)
         _dbContext.AuditEvents.Add(new AuditEvent
@@ -287,13 +382,131 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Issues a single-use invitation for an approved application.
+    /// </summary>
+    [HttpPost("applications/{id}/invitation")]
+    [Authorize(Roles = "Administrator,ComplianceApprover")]
+    public async Task<ActionResult<IssueInvitationResponse>> IssueClientInvitation(
+        string id,
+        [FromBody] IssueInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var app = await _dbContext.Applications
+            .FirstOrDefaultAsync(a => a.ApplicationId == id, cancellationToken);
+
+        if (app == null)
+        {
+            return NotFound(new { message = "Application not found." });
+        }
+
+        if (!string.Equals(app.Status, "Approved — activation pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Move this application to Approved — activation pending before sending an invitation." });
+        }
+
+        var manager = await ResolveManagerByNameAsync(app.AssignedReviewer, cancellationToken);
+        if (manager == null)
+        {
+            return BadRequest(new { message = "Assign an active account manager before sending an invitation." });
+        }
+
+        var existingClient = await _dbContext.Clients
+            .AsNoTracking()
+            .AnyAsync(c => c.Email == app.Email && c.Status == "active", cancellationToken);
+        if (existingClient)
+        {
+            return Conflict(new { message = "This applicant already has an active client account." });
+        }
+
+        var now = DateTime.UtcNow;
+        var openInvitations = await _dbContext.Invitations
+            .Where(i => i.ApplicationId == id && i.AcceptedAt == null && i.RevokedAt == null && i.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+
+        foreach (var invitation in openInvitations)
+        {
+            invitation.RevokedAt = now;
+        }
+
+        var plainToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var invitationId = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
+        var expiresInHours = request.ExpiresInHours is >= 1 and <= 168 ? request.ExpiresInHours.Value : 72;
+        var expiresAt = now.AddHours(expiresInHours);
+        var (actorId, actorName) = GetActor();
+
+        var invitationRecord = new Invitation
+        {
+            InvitationId = invitationId,
+            TokenHash = HashToken(plainToken),
+            Email = app.Email,
+            ApplicationId = app.ApplicationId,
+            IssuedByUserId = actorId,
+            IssuedAt = now,
+            ExpiresAt = expiresAt,
+        };
+
+        _dbContext.Invitations.Add(invitationRecord);
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "Application",
+            EntityId = app.ApplicationId,
+            Action = "InvitationSent",
+            ActorId = actorId,
+            ActorName = actorName,
+            After = $"InvitationId={invitationId}|Email={app.Email}|ExpiresAt={expiresAt:O}",
+            Reason = request.Reason,
+            Timestamp = now,
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var portalBaseUrl = _configuration["Portal:BaseUrl"]?.TrimEnd('/')
+            ?? $"{Request.Scheme}://{Request.Host}";
+        var invitationUrl = $"{portalBaseUrl}/invite/{plainToken}";
+
+        await _emailService.SendClientInvitationAsync(
+            app.Email,
+            app.ApplicantName,
+            app.Reference,
+            invitationUrl,
+            expiresAt,
+            cancellationToken);
+
+        return Ok(new IssueInvitationResponse
+        {
+            InvitationId = invitationId,
+            ExpiresAt = expiresAt.ToString("O"),
+            InvitationUrl = invitationUrl,
+        });
+    }
+
+    /// <summary>
     /// Returns a list of all clients.
     /// </summary>
     [HttpGet("clients")]
     public async Task<ActionResult<IEnumerable<AdminClientResponse>>> GetClients(CancellationToken cancellationToken)
     {
-        var clients = await _dbContext.Clients
-            .AsNoTracking()
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        var query = _dbContext.Clients.AsNoTracking().AsQueryable();
+
+        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
+        {
+            var manager = await _dbContext.AccountManagers
+                .FirstOrDefaultAsync(m => m.Email == userEmail, cancellationToken);
+            if (manager != null)
+            {
+                query = query.Where(c => c.ManagerId == manager.ManagerId || c.ManagerName == manager.Name);
+            }
+            else
+            {
+                query = query.Where(c => false);
+            }
+        }
+
+        var clients = await query
             .OrderBy(c => c.Name)
             .ToListAsync(cancellationToken);
 
@@ -316,14 +529,133 @@ public class AdminController : ControllerBase
     /// Returns all account managers.
     /// </summary>
     [HttpGet("managers")]
-    public async Task<ActionResult<IEnumerable<AccountManager>>> GetManagers(CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<ManagerDto>>> GetManagers(CancellationToken cancellationToken)
     {
         var managers = await _dbContext.AccountManagers
             .AsNoTracking()
             .OrderBy(m => m.Name)
+            .Select(m => new ManagerDto
+            {
+                Id = m.ManagerId,
+                Name = m.Name,
+                Title = m.Title,
+                Email = m.Email,
+                ActiveClients = m.ActiveClients,
+                Capacity = m.Capacity,
+                Status = m.Status,
+            })
             .ToListAsync(cancellationToken);
 
         return Ok(managers);
+    }
+
+    /// <summary>
+    /// Creates a new account manager.
+    /// </summary>
+    [HttpPost("managers")]
+    [Authorize(Roles = "Administrator,ComplianceApprover")]
+    public async Task<ActionResult<ManagerDto>> CreateManager(
+        [FromBody] UpsertAccountManagerRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        if (await _dbContext.AccountManagers.AnyAsync(m => m.Email == normalizedEmail, cancellationToken))
+        {
+            return Conflict(new { message = "An account manager with this email already exists." });
+        }
+
+        var manager = new AccountManager
+        {
+            ManagerId = await GenerateManagerIdAsync(cancellationToken),
+            Name = request.Name.Trim(),
+            Title = request.Title.Trim(),
+            Email = normalizedEmail,
+            ActiveClients = Math.Max(0, request.ActiveClients),
+            Capacity = Math.Max(0, request.Capacity),
+            Status = NormalizeManagerStatus(request.Status, request.ActiveClients, request.Capacity),
+        };
+
+        _dbContext.AccountManagers.Add(manager);
+
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "AccountManager",
+            EntityId = manager.ManagerId,
+            Action = "Created",
+            ActorId = actorId,
+            ActorName = actorName,
+            After = $"Name={manager.Name}|Email={manager.Email}|Status={manager.Status}",
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return CreatedAtAction(nameof(GetManagers), new { id = manager.ManagerId }, ToManagerDto(manager));
+    }
+
+    /// <summary>
+    /// Updates an account manager's editable roster fields.
+    /// </summary>
+    [HttpPut("managers/{managerId}")]
+    [Authorize(Roles = "Administrator,ComplianceApprover")]
+    public async Task<ActionResult<ManagerDto>> UpdateManager(
+        string managerId,
+        [FromBody] UpsertAccountManagerRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var manager = await _dbContext.AccountManagers
+            .FirstOrDefaultAsync(m => m.ManagerId == managerId, cancellationToken);
+
+        if (manager == null)
+        {
+            return NotFound(new { message = "Account manager not found." });
+        }
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var emailInUse = await _dbContext.AccountManagers
+            .AnyAsync(m => m.ManagerId != managerId && m.Email == normalizedEmail, cancellationToken);
+        if (emailInUse)
+        {
+            return Conflict(new { message = "Another account manager already uses this email." });
+        }
+
+        var before = $"Name={manager.Name}|Email={manager.Email}|Capacity={manager.Capacity}|Status={manager.Status}";
+        manager.Name = request.Name.Trim();
+        manager.Title = request.Title.Trim();
+        manager.Email = normalizedEmail;
+        manager.ActiveClients = Math.Max(0, request.ActiveClients);
+        manager.Capacity = Math.Max(0, request.Capacity);
+        manager.Status = NormalizeManagerStatus(request.Status, manager.ActiveClients, manager.Capacity);
+
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "AccountManager",
+            EntityId = manager.ManagerId,
+            Action = "Updated",
+            ActorId = actorId,
+            ActorName = actorName,
+            Before = before,
+            After = $"Name={manager.Name}|Email={manager.Email}|Capacity={manager.Capacity}|Status={manager.Status}",
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(ToManagerDto(manager));
     }
 
     /// <summary>
@@ -374,6 +706,99 @@ public class AdminController : ControllerBase
 
         return Ok(response);
     }
+
+    private (string ActorId, string ActorName) GetActor()
+    {
+        var actorId = User.FindFirstValue("clientId")
+            ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.Identity?.Name
+            ?? "system";
+        var actorName = User.FindFirstValue(ClaimTypes.Name)
+            ?? User.FindFirstValue(ClaimTypes.Email)
+            ?? "Staff User";
+        return (actorId, actorName);
+    }
+
+    private async Task<AccountManager?> ResolveManagerByNameAsync(string managerName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(managerName) || string.Equals(managerName, "Unassigned", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return await _dbContext.AccountManagers
+            .FirstOrDefaultAsync(m => m.Name == managerName && m.Status == "active", cancellationToken);
+    }
+
+    private async Task<string> GenerateManagerIdAsync(CancellationToken cancellationToken)
+    {
+        var count = await _dbContext.AccountManagers.CountAsync(cancellationToken);
+        string managerId;
+        do
+        {
+            count += 1;
+            managerId = $"MGR-{count:000}";
+        }
+        while (await _dbContext.AccountManagers.AnyAsync(m => m.ManagerId == managerId, cancellationToken));
+
+        return managerId;
+    }
+
+    private static string BuildStatusChangeReason(string? reason, AccountManager? manager)
+    {
+        if (manager == null)
+        {
+            return reason ?? string.Empty;
+        }
+
+        var managerText = $"Assigned manager: {manager.Name}";
+        return string.IsNullOrWhiteSpace(reason) ? managerText : $"{reason} | {managerText}";
+    }
+
+    private static string NormalizeManagerStatus(string status, int activeClients, int capacity)
+    {
+        var normalizedStatus = string.IsNullOrWhiteSpace(status) ? "active" : status.Trim().ToLowerInvariant();
+        if (!ValidManagerStatuses.Contains(normalizedStatus))
+        {
+            normalizedStatus = "active";
+        }
+
+        return GetManagerStatus(activeClients, capacity, normalizedStatus);
+    }
+
+    private static string GetManagerStatus(int activeClients, int capacity, string currentStatus)
+    {
+        if (string.Equals(currentStatus, "inactive", StringComparison.OrdinalIgnoreCase))
+        {
+            return "inactive";
+        }
+
+        if (capacity > 0 && activeClients >= capacity)
+        {
+            return "at capacity";
+        }
+
+        return "active";
+    }
+
+    private static ManagerDto ToManagerDto(AccountManager manager)
+    {
+        return new ManagerDto
+        {
+            Id = manager.ManagerId,
+            Name = manager.Name,
+            Title = manager.Title,
+            Email = manager.Email,
+            ActiveClients = manager.ActiveClients,
+            Capacity = manager.Capacity,
+            Status = manager.Status,
+        };
+    }
+
+    private static string HashToken(string token)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    }
 }
 
 public class AdminApplicationResponse
@@ -409,6 +834,9 @@ public class UpdateStatusRequest
 
     [MaxLength(1000)]
     public string? Reason { get; set; }
+
+    [MaxLength(50)]
+    public string? ManagerId { get; set; }
 }
 
 public class AddNoteRequest
@@ -440,4 +868,45 @@ public class AdminAuditEventResponse
     public string Timestamp { get; set; } = string.Empty;
     public string? Reason { get; set; }
     public string Severity { get; set; } = "info"; // info | warning | critical
+}
+
+public class UpsertAccountManagerRequest
+{
+    [Required]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(200)]
+    public string Title { get; set; } = string.Empty;
+
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Range(0, 10000)]
+    public int ActiveClients { get; set; }
+
+    [Range(0, 10000)]
+    public int Capacity { get; set; } = 20;
+
+    [MaxLength(50)]
+    public string Status { get; set; } = "active";
+}
+
+public class IssueInvitationRequest
+{
+    [Range(1, 168)]
+    public int? ExpiresInHours { get; set; } = 72;
+
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
+}
+
+public class IssueInvitationResponse
+{
+    public string InvitationId { get; set; } = string.Empty;
+    public string ExpiresAt { get; set; } = string.Empty;
+    public string InvitationUrl { get; set; } = string.Empty;
 }

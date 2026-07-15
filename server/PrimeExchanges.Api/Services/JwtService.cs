@@ -18,8 +18,8 @@ public class JwtService : IJwtService
 
     public string GenerateToken(string email, string clientId, string role, double expiresInHours = 8)
     {
-        var issuer = _configuration["Jwt:Issuer"] ?? "PrimeExchanges";
-        var audience = _configuration["Jwt:Audience"] ?? "PrimeExchanges.Portal";
+        var issuer = _configuration["Jwt:Issuer"] ?? "PrimeXchanges";
+        var audience = _configuration["Jwt:Audience"] ?? "PrimeXchanges.Portal";
         var secret = _configuration["Jwt:Secret"];
 
         if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
@@ -47,5 +47,39 @@ public class JwtService : IJwtService
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public ClaimsPrincipal? ValidateToken(string token)
+    {
+        var secret = _configuration["Jwt:Secret"];
+        if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
+        {
+            return null;
+        }
+
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var key = Encoding.UTF8.GetBytes(secret);
+
+        try
+        {
+            tokenHandler.ValidateToken(token, new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateIssuer = true,
+                ValidIssuer = _configuration["Jwt:Issuer"] ?? "PrimeXchanges",
+                ValidateAudience = true,
+                ValidAudience = _configuration["Jwt:Audience"] ?? "PrimeXchanges.Portal",
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero
+            }, out SecurityToken validatedToken);
+
+            return new ClaimsPrincipal(new ClaimsIdentity(((JwtSecurityToken)validatedToken).Claims, "jwt"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "JWT validation failed");
+            return null;
+        }
     }
 }

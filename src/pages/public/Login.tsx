@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '../../components/Logo';
 import { useAuth } from '../../hooks/useAuth';
+import { isApiConfigured } from '../../lib/api';
 
-type LoginStep = 'email' | 'verify' | 'success';
+type LoginStep = 'email' | 'verify' | 'success' | 'staff-mfa';
 
 interface FormErrors {
   email?: string;
@@ -14,13 +15,14 @@ const MOCK_CODE = '123456';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { requestMagicLink, verifyMagicLink, staffLogin, loading: authLoading, error: authError, clearError } = useAuth();
+  const { requestMagicLink, verifyMagicLink, staffLogin, staffMfaVerify, loading: authLoading, error: authError, clearError } = useAuth();
   const [step, setStep] = useState<LoginStep>('email');
   const [portalType, setPortalType] = useState<'client' | 'staff'>('client');
   const [errors, setErrors] = useState<FormErrors & { password?: string }>({});
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
   const [remember, setRemember] = useState(false);
   const [expiresIn, setExpiresIn] = useState(15);
   const [resendDisabled, setResendDisabled] = useState(false);
@@ -62,7 +64,7 @@ export default function Login() {
       setToken('');
       setErrors({});
     } catch {
-      // Error message is surfaced via useAuth's error state — no action needed here
+      // Error message is surfaced via useAuth's error state
     }
   };
 
@@ -70,11 +72,18 @@ export default function Login() {
     ev?.preventDefault();
     if (!validateStaffForm()) return;
     try {
-      await staffLogin({ email: email.trim(), password: password.trim(), remember });
-      setStep('success');
-      setTimeout(() => navigate('/admin/applications'), 900);
+      const result = await staffLogin({ email: email.trim(), password: password.trim(), remember });
+      if (result.requiresMfa && result.mfaToken) {
+        setMfaToken(result.mfaToken);
+        setStep('staff-mfa');
+        setToken('');
+        setErrors({});
+      } else {
+        setStep('success');
+        setTimeout(() => navigate('/admin/applications'), 900);
+      }
     } catch {
-      // Error message is surfaced via useAuth's error state — no action needed here
+      // Error message is surfaced via useAuth's error state
     }
   };
 
@@ -86,7 +95,19 @@ export default function Login() {
       setStep('success');
       setTimeout(() => navigate('/client/dashboard'), 900);
     } catch {
-      // Error message is surfaced via useAuth's error state — no action needed here
+      // Error message is surfaced via useAuth's error state
+    }
+  };
+
+  const handleStaffMfaVerify = async (ev?: React.FormEvent) => {
+    ev?.preventDefault();
+    if (!validateToken()) return;
+    try {
+      await staffMfaVerify(mfaToken, token.trim(), remember);
+      setStep('success');
+      setTimeout(() => navigate('/admin/applications'), 900);
+    } catch {
+      // Error is surfaced via useAuth's error state
     }
   };
 
@@ -101,7 +122,6 @@ export default function Login() {
     } catch {
       // Error surfaced via useAuth error state
     } finally {
-      // Re-enable resend after a short cooldown
       setTimeout(() => setResendDisabled(false), 30000);
     }
   };
@@ -115,16 +135,14 @@ export default function Login() {
       return chars.join('').slice(0, 6);
     });
     if (authError) clearError();
-    // Move focus to the next input if there is one
     if (index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
-  // Clear auth error when email or password changes
   useEffect(() => {
     if (authError) clearError();
-  }, [email, password, clearError]);
+  }, [portalType, step]);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, var(--navy-900) 0%, var(--navy-800) 100%)' }}>
@@ -148,6 +166,7 @@ export default function Login() {
               <p className="text-muted" style={{ fontSize: '0.9rem' }}>
                 {step === 'email' && (portalType === 'client' ? 'Enter your email to receive a secure sign-in code.' : 'Enter your staff credentials.')}
                 {step === 'verify' && `Enter the 6-digit code sent to ${email}.`}
+                {step === 'staff-mfa' && 'Enter the 6-digit code from your authenticator app.'}
                 {step === 'success' && 'You are signed in. Redirecting…'}
               </p>
             </div>
@@ -222,60 +241,32 @@ export default function Login() {
                     {errors.email && <p className="form-error">{errors.email}</p>}
                   </div>
 
-                  <div className="form-check" style={{ marginBottom: 'var(--space-5)' }}>
-                    <input
-                      id="remember"
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                    />
-                    <label htmlFor="remember" style={{ fontSize: '0.85rem' }}>Keep me signed in on this device</label>
-                  </div>
-
                   <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
-                    {authLoading ? (
-                      <>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
-                          <path d="M21 12a9 9 0 11-6.219-8.56" />
-                        </svg>
-                        Sending code…
-                      </>
-                    ) : (
-                      <>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                        </svg>
-                        Send sign-in code
-                      </>
-                    )}
+                    {authLoading ? 'Sending…' : 'Send Secure Code'}
                   </button>
-
-                  <p className="text-muted" style={{ fontSize: '0.78rem', textAlign: 'center', marginTop: 'var(--space-4)' }}>
-                    Use the same email you used on your application form.
-                  </p>
                 </form>
               ) : (
                 <form onSubmit={handleStaffLogin} noValidate>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="email">Email address <span className="req">*</span></label>
+                    <label className="form-label" htmlFor="staff-email">Staff Email <span className="req">*</span></label>
                     <input
-                      id="email"
+                      id="staff-email"
                       type="email"
                       className={`form-control ${errors.email ? 'error' : ''}`}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       aria-invalid={!!errors.email}
-                      placeholder="accounts@primexchanges.com"
+                      placeholder="name@primexchanges.com"
                       autoComplete="email"
                       autoFocus
                     />
                     {errors.email && <p className="form-error">{errors.email}</p>}
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="password">Password <span className="req">*</span></label>
+                  <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
+                    <label className="form-label" htmlFor="staff-password">Password <span className="req">*</span></label>
                     <input
-                      id="password"
+                      id="staff-password"
                       type="password"
                       className={`form-control ${errors.password ? 'error' : ''}`}
                       value={password}
@@ -287,53 +278,50 @@ export default function Login() {
                     {errors.password && <p className="form-error">{errors.password}</p>}
                   </div>
 
-                  <div className="form-check" style={{ marginBottom: 'var(--space-5)' }}>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
                     <input
                       id="remember-staff"
                       type="checkbox"
                       checked={remember}
                       onChange={(e) => setRemember(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
                     />
-                    <label htmlFor="remember-staff" style={{ fontSize: '0.85rem' }}>Keep me signed in on this device</label>
+                    <label htmlFor="remember-staff" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>Keep me signed in on this device</label>
                   </div>
 
                   <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
-                    {authLoading ? (
-                      <>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
-                          <path d="M21 12a9 9 0 11-6.219-8.56" />
-                        </svg>
-                        Signing in…
-                      </>
-                    ) : (
-                      <>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
-                        </svg>
-                        Sign In
-                      </>
-                    )}
+                    {authLoading ? 'Signing in…' : 'Sign In'}
                   </button>
                 </form>
               )
             )}
 
-            {/* Step 2: Verify code */}
+            {/* Step 2: Client Magic Code Verification */}
             {step === 'verify' && (
               <form onSubmit={handleVerify} noValidate>
-                <div className="form-group" style={{ textAlign: 'center' }}>
-                  <label className="form-label" htmlFor="token-0">Verification code</label>
-                  <div className="otp-input-group" style={{ justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+                <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
                     {[0, 1, 2, 3, 4, 5].map((index) => (
                       <input
                         key={index}
-                        id={`token-${index}`}
                         ref={(el) => { inputRefs.current[index] = el; }}
                         type="text"
                         inputMode="numeric"
+                        pattern="[0-9]*"
                         maxLength={1}
-                        className={`form-control otp-digit ${errors.token ? 'error' : ''}`}
-                        value={token[index] ?? ''}
+                        style={{
+                          width: '48px',
+                          height: '56px',
+                          fontSize: '1.5rem',
+                          textAlign: 'center',
+                          borderRadius: 'var(--radius)',
+                          border: '2px solid var(--line)',
+                          outline: 'none',
+                          background: 'var(--bg-card)',
+                          color: 'var(--navy-900)',
+                          fontWeight: 700
+                        }}
+                        value={token[index] || ''}
                         onChange={(e) => handleTokenChange(e.target.value, index)}
                         onKeyDown={(e) => {
                           if (e.key === 'Backspace' && !token[index] && index > 0) {
@@ -359,27 +347,15 @@ export default function Login() {
                   <p className="text-muted" style={{ fontSize: '0.78rem' }}>
                     Code expires in {expiresIn} minutes.
                   </p>
-                  <p className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: 'var(--space-2)' }}>
-                    Demo mode — use code <strong>{MOCK_CODE}</strong>
-                  </p>
+                  {!isApiConfigured && (
+                    <p className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: 'var(--space-2)' }}>
+                      Demo mode — use code <strong>{MOCK_CODE}</strong>
+                    </p>
+                  )}
                 </div>
 
                 <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
-                  {authLoading ? (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="login-spinner" aria-hidden>
-                        <path d="M21 12a9 9 0 11-6.219-8.56" />
-                      </svg>
-                      Verifying…
-                    </>
-                  ) : (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
-                      </svg>
-                      Sign In
-                    </>
-                  )}
+                  {authLoading ? 'Verifying…' : 'Sign In'}
                 </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-4)' }}>
@@ -399,6 +375,78 @@ export default function Login() {
                     disabled={resendDisabled || authLoading}
                   >
                     Resend code
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Step 2.5: Staff MFA Verification */}
+            {step === 'staff-mfa' && (
+              <form onSubmit={handleStaffMfaVerify} noValidate>
+                <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+                    {[0, 1, 2, 3, 4, 5].map((index) => (
+                      <input
+                        key={index}
+                        ref={(el) => { inputRefs.current[index] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        style={{
+                          width: '48px',
+                          height: '56px',
+                          fontSize: '1.5rem',
+                          textAlign: 'center',
+                          borderRadius: 'var(--radius)',
+                          border: '2px solid var(--line)',
+                          outline: 'none',
+                          background: 'var(--bg-card)',
+                          color: 'var(--navy-900)',
+                          fontWeight: 700
+                        }}
+                        value={token[index] || ''}
+                        onChange={(e) => handleTokenChange(e.target.value, index)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Backspace' && !token[index] && index > 0) {
+                            inputRefs.current[index - 1]?.focus();
+                          }
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                          setToken(pasted);
+                          if (pasted.length === 6) {
+                            inputRefs.current[5]?.focus();
+                          } else if (inputRefs.current[pasted.length]) {
+                            inputRefs.current[pasted.length]?.focus();
+                          }
+                        }}
+                        aria-label={`Digit ${index + 1} of 6`}
+                        autoFocus={index === 0}
+                      />
+                    ))}
+                  </div>
+                  {errors.token && <p className="form-error">{errors.token}</p>}
+                  {!isApiConfigured && (
+                    <p className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: 'var(--space-2)' }}>
+                      Demo mode — use code <strong>{MOCK_CODE}</strong>
+                    </p>
+                  )}
+                </div>
+
+                <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
+                  {authLoading ? 'Verifying…' : 'Verify & Sign In'}
+                </button>
+
+                <div style={{ textAlign: 'center', marginTop: 'var(--space-4)' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ padding: 0, fontSize: '0.85rem' }}
+                    onClick={() => { setStep('email'); setToken(''); }}
+                  >
+                    ← Back to credentials
                   </button>
                 </div>
               </form>

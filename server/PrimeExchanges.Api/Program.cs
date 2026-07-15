@@ -59,8 +59,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "PrimeExchanges",
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "PrimeExchanges.Portal",
+            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "PrimeXchanges",
+            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "PrimeXchanges.Portal",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
             ClockSkew = TimeSpan.Zero,
         };
@@ -130,14 +130,14 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.EnsureCreatedAsync();
-    await SeedData.InitializeAsync(dbContext);
+    await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
 }
 else
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
-    await SeedData.InitializeAsync(dbContext);
+    await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
 }
 
 // ─── Middleware pipeline ──────────────────────────────────────────────────────
@@ -175,6 +175,14 @@ app.MapControllers();
 
 // Health check (unauthenticated, excluded from SPA fallback).
 app.MapHealthChecks("/api/health");
+
+// Unmatched API routes return 404.
+app.Map("api/{*any}", (HttpContext context) =>
+{
+    context.Response.StatusCode = StatusCodes.Status404NotFound;
+    context.Response.ContentType = "application/json";
+    return context.Response.WriteAsJsonAsync(new { error = "API endpoint not found." });
+});
 
 // SPA fallback: any non-API, non-file route → index.html.
 app.MapFallbackToFile("index.html");

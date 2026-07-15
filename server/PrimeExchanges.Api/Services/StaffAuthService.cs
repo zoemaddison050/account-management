@@ -63,6 +63,23 @@ public class StaffAuthService : IStaffAuthService
             return new StaffLoginResult(false, Error: "Invalid email or password.");
         }
 
+        if (user.MfaEnabled)
+        {
+            var mfaToken = _jwtService.GenerateToken(user.Email, user.UserId, "MfaPending", 0.1);
+            _logger.LogInformation("Staff first-factor login successful for {Email}. MFA required.", normalizedEmail);
+            return new StaffLoginResult(
+                Success: true,
+                Token: null,
+                UserId: user.UserId,
+                Name: user.Name,
+                Email: user.Email,
+                Role: user.Role,
+                Error: null,
+                RequiresMfa: true,
+                MfaToken: mfaToken
+            );
+        }
+
         // Successful login — update last login timestamp
         user.LastLoginAt = DateTime.UtcNow;
 

@@ -9,7 +9,7 @@ namespace PrimeExchanges.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Roles = "client")]
 public class ClientsController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
@@ -159,7 +159,7 @@ public class ClientsController : ControllerBase
             new()
             {
                 Id = "DOC-003",
-                Name = "PrimeExchanges Disclosures & Terms of Business.pdf",
+                Name = "PrimeXchanges Disclosures & Terms of Business.pdf",
                 Type = "Policy",
                 Version = "3.2",
                 PublishedAt = DateTime.UtcNow.AddMonths(-2).ToString("O"),
