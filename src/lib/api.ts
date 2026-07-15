@@ -144,6 +144,8 @@ export async function getManagers(): Promise<AccountManager[]> {
   return apiFetch<AccountManager[]>('/managers');
 }
 
+// DraftResumeResult is declared alongside apiResumeDraft below.
+
 /**
  * Requests a magic-link / OTP email for the given address.
  *
@@ -155,6 +157,7 @@ export async function getManagers(): Promise<AccountManager[]> {
  *
  * When no API base URL is configured the call falls back to a simulated
  * request so the UI flow remains testable locally.
+
  */
 export async function requestMagicLink(payload: MagicLinkRequest): Promise<{ email: string; expiresInMinutes: number }> {
   if (!isApiConfigured) {
@@ -266,8 +269,15 @@ export async function submitApplication(payload: SubmitApplicationRequest): Prom
   });
 }
 
+// ─── Draft save / resume ─────────────────────────────────────────────────────
+
+export interface DraftResumeResult {
+  email: string;
+  draftDataJson: string;
+}
+
 /**
- * Saves an application draft to the server.
+ * Saves an application draft to the server (upsert by email).
  */
 export async function apiSaveDraft(email: string, draftDataJson: string): Promise<void> {
   if (!isApiConfigured) {
@@ -282,7 +292,8 @@ export async function apiSaveDraft(email: string, draftDataJson: string): Promis
 }
 
 /**
- * Requests a verification code to resume a draft.
+ * Requests a 6-digit verification code so the applicant can resume their draft.
+ * The server always returns success to prevent email enumeration.
  */
 export async function apiRequestDraftResume(email: string): Promise<void> {
   if (!isApiConfigured) {
@@ -296,20 +307,16 @@ export async function apiRequestDraftResume(email: string): Promise<void> {
 }
 
 /**
- * Verifies code and resumes an application draft.
+ * Verifies the 6-digit code and returns the saved draft JSON.
  */
-export async function apiResumeDraft(email: string, code: string): Promise<{ email: string; draftDataJson: string }> {
+export async function apiResumeDraft(email: string, code: string): Promise<DraftResumeResult> {
   if (!isApiConfigured) {
     const data = localStorage.getItem(`px-draft-${email.trim().toLowerCase()}`);
-    if (!data) {
-      throw new Error('API 400: No draft found for this email');
-    }
-    if (code !== '123456') {
-      throw new Error('API 400: Invalid verification code');
-    }
+    if (!data) throw new Error('API 400: No draft found for this email');
+    if (code !== '123456') throw new Error('API 400: Invalid verification code');
     return { email, draftDataJson: data };
   }
-  return apiFetch<{ email: string; draftDataJson: string }>('/applications/draft/resume', {
+  return apiFetch<DraftResumeResult>('/applications/draft/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, code }),
