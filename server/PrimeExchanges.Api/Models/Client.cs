@@ -35,4 +35,5 @@ public class Client
     public string PortfoliosJson { get; set; } = "[]";
     public string DocumentsJson { get; set; } = "[]";
     public string ActivityJson { get; set; } = "[]";
+    public DateTime? PortfolioLastUpdated { get; set; }
 }

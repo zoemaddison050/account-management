@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 import { formatDate } from '../../data/mockData';
-import { getClientDocuments } from '../../lib/api';
+import { getClientDocuments, getClientDocumentPdf } from '../../lib/api';
 import type { ClientDocument } from '../../types';
 
 const typeFilters = ['All', 'Statement', 'Report', 'Agreement', 'Policy', 'Tax'];
@@ -19,6 +19,7 @@ export default function Documents() {
   const [filter, setFilter] = useState('All');
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   useEffect(() => {
     getClientDocuments()
@@ -28,6 +29,29 @@ export default function Documents() {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  const handleViewDocument = async (id: string, name: string) => {
+    if (viewingId) return;
+    setViewingId(id);
+    try {
+      const blob = await getClientDocumentPdf(id);
+      const url = window.URL.createObjectURL(blob);
+      const newTab = window.open(url, '_blank');
+      if (!newTab) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name.endsWith('.pdf') ? name : `${name}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Unable to load document PDF.');
+    } finally {
+      setViewingId(null);
+    }
+  };
 
   const filtered = filter === 'All' ? documents : documents.filter((d) => d.type === filter);
 
@@ -87,11 +111,16 @@ export default function Documents() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--line-soft)' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>{formatDate(d.publishedAt)} · {d.sizeLabel}</span>
-                  <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.6rem' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline' }}>
+                  <button
+                    onClick={() => handleViewDocument(d.id, d.name)}
+                    disabled={viewingId !== null}
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.82rem', padding: '0.3rem 0.6rem' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', marginRight: '4px' }}>
                       <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
-                    View
+                    {viewingId === d.id ? 'Loading...' : 'View'}
                   </button>
                 </div>
               </div>

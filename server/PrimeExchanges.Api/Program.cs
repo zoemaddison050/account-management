@@ -134,12 +134,14 @@ async Task ApplyDynamicClientColumnsAsync(AppDbContext context)
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN PortfoliosJson TEXT NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN DocumentsJson TEXT NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN ActivityJson TEXT NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN PortfolioLastUpdated TEXT NULL;"); } catch {}
         }
         else
         {
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'PortfoliosJson') ALTER TABLE [Clients] ADD [PortfoliosJson] NVARCHAR(MAX) NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'DocumentsJson') ALTER TABLE [Clients] ADD [DocumentsJson] NVARCHAR(MAX) NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'ActivityJson') ALTER TABLE [Clients] ADD [ActivityJson] NVARCHAR(MAX) NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'PortfolioLastUpdated') ALTER TABLE [Clients] ADD [PortfolioLastUpdated] DATETIME2 NULL;"); } catch {}
         }
     }
     catch (Exception ex)

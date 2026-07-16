@@ -992,6 +992,11 @@ public class AdminController : ControllerBase
             return NotFound(new { message = "Client not found." });
         }
 
+        if (client.PortfoliosJson != request.PortfoliosJson)
+        {
+            client.PortfolioLastUpdated = DateTime.UtcNow;
+        }
+
         client.PortfoliosJson = request.PortfoliosJson;
         client.DocumentsJson = request.DocumentsJson;
         client.ActivityJson = request.ActivityJson;

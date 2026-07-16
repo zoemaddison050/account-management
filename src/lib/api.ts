@@ -395,6 +395,26 @@ export async function getClientDocuments(): Promise<ClientDocument[]> {
 }
 
 /**
+ * Download a client PDF document.
+ */
+export async function getClientDocumentPdf(id: string): Promise<Blob> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return new Blob(['%PDF-1.4 Mock PDF content...'], { type: 'application/pdf' });
+  }
+  const url = `${API_BASE_URL}/clients/me/documents/${id}/pdf`;
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${getAuthToken()}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error('Unable to download PDF.');
+  }
+  return response.blob();
+}
+
+/**
  * Fetch admin dashboard summary stats.
  */
 export async function getAdminStats(): Promise<{ total: number; pending: number; approved: number; declined: number }> {
