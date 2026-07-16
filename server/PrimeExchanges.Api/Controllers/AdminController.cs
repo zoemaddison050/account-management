@@ -799,6 +799,218 @@ public class AdminController : ControllerBase
     {
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     }
+
+    /// <summary>
+    /// Deletes an account manager.
+    /// </summary>
+    [HttpDelete("managers/{managerId}")]
+    [Authorize(Roles = "Administrator,ComplianceApprover")]
+    public async Task<IActionResult> DeleteManager(string managerId, CancellationToken cancellationToken)
+    {
+        var manager = await _dbContext.AccountManagers.FirstOrDefaultAsync(m => m.ManagerId == managerId, cancellationToken);
+        if (manager == null)
+        {
+            return NotFound(new { message = "Manager not found." });
+        }
+
+        // Reassign clients to Unassigned
+        var assignedClients = await _dbContext.Clients.Where(c => c.ManagerId == managerId).ToListAsync(cancellationToken);
+        foreach (var client in assignedClients)
+        {
+            client.ManagerId = null;
+            client.ManagerName = null;
+        }
+
+        _dbContext.AccountManagers.Remove(manager);
+        
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "AccountManager",
+            EntityId = managerId,
+            Action = "Deleted",
+            ActorId = actorId,
+            ActorName = actorName,
+            Reason = "Administrative deletion",
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Deletes a client.
+    /// </summary>
+    [HttpDelete("clients/{clientId}")]
+    [Authorize(Roles = "Administrator,ComplianceApprover")]
+    public async Task<IActionResult> DeleteClient(string clientId, CancellationToken cancellationToken)
+    {
+        var client = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == clientId, cancellationToken);
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        _dbContext.Clients.Remove(client);
+
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "Client",
+            EntityId = clientId,
+            Action = "Deleted",
+            ActorId = actorId,
+            ActorName = actorName,
+            Reason = "Administrative deletion",
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Deletes an application request.
+    /// </summary>
+    [HttpDelete("applications/{id}")]
+    [Authorize(Roles = "Administrator,ComplianceApprover,OperationsReviewer")]
+    public async Task<IActionResult> DeleteApplication(string id, CancellationToken cancellationToken)
+    {
+        var app = await _dbContext.Applications.FirstOrDefaultAsync(a => a.ApplicationId == id, cancellationToken);
+        if (app == null)
+        {
+            return NotFound(new { message = "Application not found." });
+        }
+
+        _dbContext.Applications.Remove(app);
+
+        var drafts = await _dbContext.ApplicationDrafts.Where(d => d.Email == app.Email).ToListAsync(cancellationToken);
+        if (drafts.Any())
+        {
+            _dbContext.ApplicationDrafts.RemoveRange(drafts);
+        }
+
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "Application",
+            EntityId = id,
+            Action = "Deleted",
+            ActorId = actorId,
+            ActorName = actorName,
+            Reason = "Administrative deletion",
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Generates/downloads the PDF for an application request.
+    /// </summary>
+    [HttpGet("applications/{id}/pdf")]
+    [Authorize(Roles = "Administrator,ComplianceApprover,OperationsReviewer,AccountManager")]
+    public async Task<IActionResult> GetApplicationPdf(string id, CancellationToken cancellationToken)
+    {
+        var app = await _dbContext.Applications.FirstOrDefaultAsync(a => a.ApplicationId == id, cancellationToken);
+        if (app == null)
+        {
+            return NotFound(new { message = "Application not found." });
+        }
+
+        var consent = await _dbContext.ConsentRecords
+            .AsNoTracking()
+            .OrderByDescending(c => c.ConsentedAt)
+            .FirstOrDefaultAsync(c => c.ApplicationId == id, cancellationToken);
+
+        var pdfBytes = ApplicationsController.GenerateApplicationPdf(
+            app, 
+            null, 
+            consent?.ConsentedAt.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+        );
+
+        return File(pdfBytes, "application/pdf", $"PrimeXchanges-Application-{app.Reference}.pdf");
+    }
+
+    /// <summary>
+    /// Returns detail of a single client.
+    /// </summary>
+    [HttpGet("clients/{clientId}")]
+    [Authorize(Roles = "Administrator,ComplianceApprover,OperationsReviewer,AccountManager")]
+    public async Task<ActionResult<AdminClientDetailResponse>> GetClient(string clientId, CancellationToken cancellationToken)
+    {
+        var client = await _dbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ClientId == clientId, cancellationToken);
+
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        return Ok(new AdminClientDetailResponse
+        {
+            Id = client.ClientId,
+            Reference = client.ClientId.Replace("CL-", "REF-"),
+            Name = client.Name,
+            Email = client.Email,
+            ManagerId = client.ManagerId ?? string.Empty,
+            ManagerName = client.ManagerName ?? "Unassigned",
+            Since = client.Since.ToString("yyyy-MM-dd"),
+            Status = client.Status,
+            PortfoliosJson = client.PortfoliosJson ?? "[]",
+            DocumentsJson = client.DocumentsJson ?? "[]",
+            ActivityJson = client.ActivityJson ?? "[]"
+        });
+    }
+
+    /// <summary>
+    /// Updates a client's portfolios, documents, and activities JSON fields.
+    /// </summary>
+    [HttpPut("clients/{clientId}/portfolio-data")]
+    [Authorize(Roles = "Administrator,ComplianceApprover,OperationsReviewer")]
+    public async Task<IActionResult> UpdateClientPortfolioData(
+        string clientId,
+        [FromBody] UpdateClientPortfolioDataRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request == null)
+        {
+            return BadRequest(new { message = "Request body is required." });
+        }
+
+        var client = await _dbContext.Clients
+            .FirstOrDefaultAsync(c => c.ClientId == clientId, cancellationToken);
+
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        client.PortfoliosJson = request.PortfoliosJson;
+        client.DocumentsJson = request.DocumentsJson;
+        client.ActivityJson = request.ActivityJson;
+
+        var (actorId, actorName) = GetActor();
+        _dbContext.AuditEvents.Add(new AuditEvent
+        {
+            AuditEventId = Guid.NewGuid().ToString(),
+            EntityType = "Client",
+            EntityId = clientId,
+            Action = "PortfolioDataUpdated",
+            ActorId = actorId,
+            ActorName = actorName,
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new { message = "Client portfolio data updated successfully." });
+    }
 }
 
 public class AdminApplicationResponse
@@ -909,4 +1121,26 @@ public class IssueInvitationResponse
     public string InvitationId { get; set; } = string.Empty;
     public string ExpiresAt { get; set; } = string.Empty;
     public string InvitationUrl { get; set; } = string.Empty;
+}
+
+public class AdminClientDetailResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Reference { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string ManagerId { get; set; } = string.Empty;
+    public string ManagerName { get; set; } = string.Empty;
+    public string Since { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string PortfoliosJson { get; set; } = "[]";
+    public string DocumentsJson { get; set; } = "[]";
+    public string ActivityJson { get; set; } = "[]";
+}
+
+public class UpdateClientPortfolioDataRequest
+{
+    public string PortfoliosJson { get; set; } = "[]";
+    public string DocumentsJson { get; set; } = "[]";
+    public string ActivityJson { get; set; } = "[]";
 }

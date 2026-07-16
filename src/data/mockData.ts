@@ -1,5 +1,5 @@
 // ============================================================
-// Prime Exchanges — Synthetic Demo Data
+// PrimeXchanges — Synthetic Demo Data
 // ⚠️  This data is FICTIONAL and for local development only.
 //     Per plan §18.1 rule 7: use synthetic/masked data for
 //     local development and testing. No real client data.
@@ -158,45 +158,7 @@ export const demoClient: Client = {
   managerName: 'Eleanor Whitfield',
   since: 'March 2024',
   status: 'active',
-  portfolios: [
-    {
-      id: 'PF-001',
-      externalAccountId: 'PEX-ACC-887122',
-      name: 'Hartwell Diversified Portfolio',
-      currency: 'USD',
-      totalValue: 847250.0,
-      valuationBasis: 'Market close, verified against source',
-      asOf: '2026-07-11T20:00:00Z',
-      syncStatus: 'ok',
-      lastSync: '2026-07-12T06:15:00Z',
-      holdings: [
-        { id: 'H1', instrument: 'US Treasury 10Y Bond', type: 'Bond', quantity: 500, value: 148200, allocationPct: 17.5, currency: 'USD' },
-        { id: 'H2', instrument: 'S&P 500 Index Fund', type: 'Fund', quantity: 850, value: 389500, allocationPct: 45.9, currency: 'USD' },
-        { id: 'H3', instrument: 'Microsoft Corp (MSFT)', type: 'Equity', quantity: 120, value: 54200, allocationPct: 6.4, currency: 'USD' },
-        { id: 'H4', instrument: 'Gold Futures', type: 'Commodity', quantity: 30, value: 61200, allocationPct: 7.2, currency: 'USD' },
-        { id: 'H5', instrument: 'EUR Money Market', type: 'Cash', quantity: 1, value: 95100, allocationPct: 11.2, currency: 'EUR' },
-        { id: 'H6', instrument: 'Emerging Markets ETF', type: 'Fund', quantity: 200, value: 98300, allocationPct: 11.6, currency: 'USD' },
-        { id: 'H7', instrument: 'Cash Reserve', type: 'Cash', quantity: 1, value: 750, allocationPct: 0.1, currency: 'USD' },
-      ],
-    },
-    {
-      id: 'PF-002',
-      externalAccountId: 'PEX-ACC-887123',
-      name: 'Hartwell Retirement Allocation',
-      currency: 'USD',
-      totalValue: 312800.0,
-      valuationBasis: 'Market close, verified against source',
-      asOf: '2026-07-10T20:00:00Z',
-      syncStatus: 'stale',
-      lastSync: '2026-07-11T06:15:00Z',
-      holdings: [
-        { id: 'H8', instrument: 'Global Bond Fund', type: 'Fund', quantity: 400, value: 142800, allocationPct: 45.6, currency: 'USD' },
-        { id: 'H9', instrument: 'Dividend Growth ETF', type: 'Fund', quantity: 600, value: 98400, allocationPct: 31.5, currency: 'USD' },
-        { id: 'H10', instrument: 'US Treasury 5Y Bond', type: 'Bond', quantity: 200, value: 56000, allocationPct: 17.9, currency: 'USD' },
-        { id: 'H11', instrument: 'Cash Reserve', type: 'Cash', quantity: 1, value: 15600, allocationPct: 5.0, currency: 'USD' },
-      ],
-    },
-  ],
+  portfolios: [],
 };
 
 // ---- All Clients (admin view) ----
@@ -384,26 +346,10 @@ export const applications: Application[] = [
 ];
 
 // ---- Activity Events (client portal) ----
-export const activityEvents: ActivityEvent[] = [
-  { id: 'A1', date: '2026-07-11', type: 'Valuation', description: 'Daily portfolio valuation published', amount: 'USD 847,250.00' },
-  { id: 'A2', date: '2026-07-10', type: 'Dividend', description: 'S&P 500 Index Fund — quarterly dividend', amount: 'USD 1,240.50' },
-  { id: 'A3', date: '2026-07-08', type: 'Statement', description: 'June 2026 monthly statement published', amount: '' },
-  { id: 'A4', date: '2026-07-05', type: 'Fee', description: 'Q2 management fee (0.25%)', amount: 'USD 2,108.13' },
-  { id: 'A5', date: '2026-07-01', type: 'Allocation change', description: 'Rebalance: increased bond allocation by 2%', amount: '' },
-  { id: 'A6', date: '2026-06-28', type: 'Sync', description: 'Portfolio data reconciliation completed — no exceptions', amount: '' },
-  { id: 'A7', date: '2026-06-25', type: 'Valuation', description: 'Daily portfolio valuation published', amount: 'USD 841,900.00' },
-  { id: 'A8', date: '2026-06-20', type: 'Dividend', description: 'Microsoft Corp — quarterly dividend', amount: 'USD 180.00' },
-];
+export const activityEvents: ActivityEvent[] = [];
 
 // ---- Client Documents ----
-export const clientDocuments: ClientDocument[] = [
-  { id: 'D1', name: 'June 2026 Monthly Statement', type: 'Statement', version: 'v1.0', publishedAt: '2026-07-08', sizeLabel: '248 KB' },
-  { id: 'D2', name: 'May 2026 Monthly Statement', type: 'Statement', version: 'v1.0', publishedAt: '2026-06-08', sizeLabel: '252 KB' },
-  { id: 'D3', name: 'Q2 2026 Performance Report', type: 'Report', version: 'v1.0', publishedAt: '2026-07-05', sizeLabel: '1.2 MB' },
-  { id: 'D4', name: 'Investment Management Agreement', type: 'Agreement', version: 'v2.1', publishedAt: '2024-03-15', sizeLabel: '340 KB' },
-  { id: 'D5', name: 'Risk Disclosure Statement', type: 'Policy', version: 'v3.0', publishedAt: '2024-03-15', sizeLabel: '180 KB' },
-  { id: 'D6', name: '2025 Tax Summary', type: 'Tax', version: 'v1.0', publishedAt: '2026-01-30', sizeLabel: '95 KB' },
-];
+export const clientDocuments: ClientDocument[] = [];
 
 // ---- Value History (for portfolio chart) ----
 export const portfolioHistory: PortfolioSnapshot[] = [

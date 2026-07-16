@@ -35,7 +35,7 @@ export default function Activity() {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
           <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <div>Activity is presented <strong>read-only</strong> and reflects data from the approved Prime Exchanges source. Source data availability determines which events appear here.</div>
+        <div>Activity is presented <strong>read-only</strong> and reflects data from the approved PrimeXchanges source. Source data availability determines which events appear here.</div>
       </div>
 
       {/* Filter tabs */}

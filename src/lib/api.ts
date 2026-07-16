@@ -629,3 +629,129 @@ export async function getAdminAuditEvents(severity?: string, search?: string): P
   if (search) params.append('search', search);
   return apiFetch<AuditEvent[]>(`/admin/audit?${params.toString()}`);
 }
+
+/**
+ * Delete an account manager.
+ */
+export async function deleteAdminManager(id: string): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const idx = accountManagers.findIndex((m) => m.id === id);
+    if (idx !== -1) accountManagers.splice(idx, 1);
+    return;
+  }
+  return apiFetch<void>(`/admin/managers/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Delete a client.
+ */
+export async function deleteAdminClient(id: string): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const idx = allClients.findIndex((c) => c.id === id);
+    if (idx !== -1) allClients.splice(idx, 1);
+    return;
+  }
+  return apiFetch<void>(`/admin/clients/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Delete an application request.
+ */
+export async function deleteAdminApplication(id: string): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const idx = applications.findIndex((a) => a.id === id);
+    if (idx !== -1) applications.splice(idx, 1);
+    return;
+  }
+  return apiFetch<void>(`/admin/applications/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Fetch detail of a client (including portfolio JSONs).
+ */
+export interface AdminClientDetail {
+  id: string;
+  reference: string;
+  name: string;
+  email: string;
+  managerId: string;
+  managerName: string;
+  since: string;
+  status: 'active' | 'paused';
+  portfoliosJson: string;
+  documentsJson: string;
+  activityJson: string;
+}
+
+export async function getAdminClientDetail(id: string): Promise<AdminClientDetail> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const client = allClients.find((c) => c.id === id);
+    if (!client) throw new Error('API 404: Client not found');
+    return {
+      id: client.id,
+      reference: client.reference,
+      name: client.name,
+      email: client.email,
+      managerId: client.managerId,
+      managerName: client.managerName,
+      since: client.since,
+      status: client.status,
+      portfoliosJson: JSON.stringify(client.portfolios || []),
+      documentsJson: JSON.stringify(clientDocuments),
+      activityJson: JSON.stringify(activityEvents),
+    };
+  }
+  return apiFetch<AdminClientDetail>(`/admin/clients/${id}`);
+}
+
+/**
+ * Update client portfolio JSON data.
+ */
+export async function updateAdminClientPortfolioData(
+  id: string,
+  portfoliosJson: string,
+  documentsJson: string,
+  activityJson: string
+): Promise<void> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const client = allClients.find((c) => c.id === id);
+    if (!client) throw new Error('API 404: Client not found');
+    client.portfolios = JSON.parse(portfoliosJson);
+    return;
+  }
+  return apiFetch<void>(`/admin/clients/${id}/portfolio-data`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ portfoliosJson, documentsJson, activityJson }),
+  });
+}
+
+/**
+ * Get PDF bytes for an application request.
+ */
+export async function getApplicationPdfBlob(id: string): Promise<Blob> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return new Blob(['%PDF-1.4 Mock PDF content...'], { type: 'application/pdf' });
+  }
+  const token = getAuthToken();
+  const url = `${API_BASE_URL}/admin/applications/${id}/pdf`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: Failed to fetch PDF`);
+  }
+  return res.blob();
+}

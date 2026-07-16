@@ -3,7 +3,7 @@ import PageHeader from '../../components/PageHeader';
 const sections = [
   {
     title: '1. Service Description',
-    body: 'The Prime Exchanges Account Management portal is a read-only client-experience layer that provides access to verified portfolio information. The portal is not the trading engine. Prime Exchanges remains the source platform for all trading and portfolio records.',
+    body: 'The PrimeXchanges Account Management portal is a read-only client-experience layer that provides access to verified portfolio information. The portal is not the trading engine. PrimeXchanges remains the source platform for all trading and portfolio records.',
   },
   {
     title: '2. Eligibility',
@@ -15,7 +15,7 @@ const sections = [
   },
   {
     title: '4. Data Accuracy',
-    body: 'Portfolio values displayed in the portal are verified against the approved Prime Exchanges data source and reconciled before publication. Values are labeled with their "as of" timestamp and data-freshness status. The portal does not display estimated, stale, or unverified values as if they are live.',
+    body: 'Portfolio values displayed in the portal are verified against the approved PrimeXchanges data source and reconciled before publication. Values are labeled with their "as of" timestamp and data-freshness status. The portal does not display estimated, stale, or unverified values as if they are live.',
   },
   {
     title: '5. Account Security',
@@ -40,7 +40,7 @@ export default function Terms() {
     <div className="fade-in">
       <section className="section">
         <div className="container-narrow">
-          <PageHeader eyebrow="Legal" title="Terms of Service" subtitle="The terms and conditions governing use of the Prime Exchanges Account Management portal." />
+          <PageHeader eyebrow="Legal" title="Terms of Service" subtitle="The terms and conditions governing use of the PrimeXchanges Account Management portal." />
           <div className="alert alert-warning" style={{ marginBottom: 'var(--space-6)' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             <div><strong>Placeholder content.</strong> This document must be reviewed and approved by the legal/compliance owner before public launch.</div>

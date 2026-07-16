@@ -108,7 +108,7 @@ export default function PublicLayout() {
             <div>
               <Logo variant="light" />
               <p style={{ fontSize: '0.88rem', color: 'var(--navy-200)', marginTop: 'var(--space-4)', maxWidth: '35ch', lineHeight: 1.6 }}>
-                A managed portfolio service for approved clients of Prime Exchanges. Read-only, verified, and transparent — your portfolio, simplified.
+                A managed portfolio service for approved clients of PrimeXchanges. Read-only, verified, and transparent — your portfolio, simplified.
               </p>
             </div>
             <div>
@@ -141,7 +141,7 @@ export default function PublicLayout() {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
             <p style={{ fontSize: '0.8rem', color: 'var(--navy-300)' }}>
-              © 2026 Prime Exchanges. All rights reserved.
+              © 2026 PrimeXchanges. All rights reserved.
             </p>
             <p style={{ fontSize: '0.8rem', color: 'var(--navy-300)' }}>
               Information shown is read-only and for approved clients only.

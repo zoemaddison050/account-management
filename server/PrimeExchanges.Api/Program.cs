@@ -125,11 +125,35 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 // ─── Database migration on startup ───────────────────────────────────────────
+async Task ApplyDynamicClientColumnsAsync(AppDbContext context)
+{
+    try
+    {
+        if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN PortfoliosJson TEXT NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN DocumentsJson TEXT NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN ActivityJson TEXT NULL;"); } catch {}
+        }
+        else
+        {
+            try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'PortfoliosJson') ALTER TABLE [Clients] ADD [PortfoliosJson] NVARCHAR(MAX) NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'DocumentsJson') ALTER TABLE [Clients] ADD [DocumentsJson] NVARCHAR(MAX) NULL;"); } catch {}
+            try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'ActivityJson') ALTER TABLE [Clients] ADD [ActivityJson] NVARCHAR(MAX) NULL;"); } catch {}
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error applying dynamic schema updates: {ex.Message}");
+    }
+}
+
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.EnsureCreatedAsync();
+    await ApplyDynamicClientColumnsAsync(dbContext);
     await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
 }
 else
@@ -137,6 +161,7 @@ else
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
+    await ApplyDynamicClientColumnsAsync(dbContext);
     await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
 }
 

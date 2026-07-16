@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
 import type { AccountManager } from '../../types';
-import { createAdminManager, getAdminManagers, updateAdminManager, type UpsertAccountManagerRequest } from '../../lib/api';
+import { createAdminManager, getAdminManagers, updateAdminManager, deleteAdminManager, type UpsertAccountManagerRequest } from '../../lib/api';
 
 const emptyForm: UpsertAccountManagerRequest = {
   name: '',
@@ -37,6 +37,18 @@ export default function Managers() {
   useEffect(() => {
     loadManagers();
   }, []);
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete manager "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteAdminManager(id);
+      loadManagers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Unable to delete manager.');
+    }
+  };
 
   const openCreate = () => {
     setCreating(true);
@@ -205,9 +217,12 @@ export default function Managers() {
                     <a href={`mailto:${m.email}`} style={{ fontSize: '0.82rem' }}>{m.email}</a>
                   </div>
 
-                  <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: 'var(--space-4)', display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                     <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem' }} onClick={() => openEdit(m)}>
                       Edit
+                    </button>
+                    <button type="button" className="btn" style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem', background: 'var(--danger)', color: 'var(--white)', border: 'none' }} onClick={() => handleDelete(m.id, m.name)}>
+                      Delete
                     </button>
                   </div>
                 </div>

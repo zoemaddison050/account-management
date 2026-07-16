@@ -25,7 +25,7 @@ public class ClientsController : ControllerBase
     /// Returns the current authenticated client's profile.
     /// </summary>
     [HttpGet("me")]
-    public async Task<ActionResult<ClientProfileResponse>> GetCurrentClient(CancellationToken cancellationToken)
+    public async Task<ActionResult> GetCurrentClient(CancellationToken cancellationToken)
     {
         // The JWT is issued with JwtRegisteredClaimNames.Email ("email"). Read that
         // claim directly, falling back to the standard ClaimTypes.Email mapping.
@@ -55,7 +55,11 @@ public class ClientsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Your account is not active. Contact support for assistance." });
         }
 
-        return Ok(new ClientProfileResponse
+        var portfolios = string.IsNullOrWhiteSpace(client.PortfoliosJson)
+            ? System.Text.Json.Nodes.JsonNode.Parse("[]")
+            : System.Text.Json.Nodes.JsonNode.Parse(client.PortfoliosJson);
+
+        return Ok(new
         {
             ClientId = client.ClientId,
             Name = client.Name,
@@ -64,6 +68,7 @@ public class ClientsController : ControllerBase
             ManagerName = client.ManagerName,
             Since = client.Since.ToString("O"),
             Status = client.Status,
+            Portfolios = portfolios
         });
     }
 
@@ -71,7 +76,7 @@ public class ClientsController : ControllerBase
     /// Returns activity events for the authenticated client.
     /// </summary>
     [HttpGet("me/activity")]
-    public async Task<ActionResult<IEnumerable<ClientActivityResponse>>> GetActivity(CancellationToken cancellationToken)
+    public async Task<ActionResult> GetActivity(CancellationToken cancellationToken)
     {
         var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
             ?? User.FindFirstValue(ClaimTypes.Email);
@@ -81,52 +86,25 @@ public class ClientsController : ControllerBase
             return Unauthorized(new { message = "Invalid session." });
         }
 
-        // Return a realistic list of recent activity events.
-        // We include some static template events, plus real log entries if they exist.
-        var activities = new List<ClientActivityResponse>
-        {
-            new()
-            {
-                Id = "ACT-001",
-                Date = DateTime.UtcNow.AddDays(-1).ToString("O"),
-                Type = "Valuation",
-                Description = "Quarterly portfolio valuation updated",
-                Amount = null
-            },
-            new()
-            {
-                Id = "ACT-002",
-                Date = DateTime.UtcNow.AddDays(-3).ToString("O"),
-                Type = "Statement",
-                Description = "June 2026 Monthly Statement published",
-                Amount = null
-            },
-            new()
-            {
-                Id = "ACT-003",
-                Date = DateTime.UtcNow.AddDays(-7).ToString("O"),
-                Type = "Dividend",
-                Description = "Cash dividend reinvestment completed",
-                Amount = "+$1,420.50"
-            },
-            new()
-            {
-                Id = "ACT-004",
-                Date = DateTime.UtcNow.AddDays(-15).ToString("O"),
-                Type = "Allocation change",
-                Description = "Rebalancing to target tactical asset allocation",
-                Amount = null
-            }
-        };
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var client = await _dbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Email == normalizedEmail, cancellationToken);
 
-        return Ok(activities);
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        var json = string.IsNullOrWhiteSpace(client.ActivityJson) ? "[]" : client.ActivityJson;
+        return Ok(System.Text.Json.Nodes.JsonNode.Parse(json));
     }
 
     /// <summary>
     /// Returns documents published for the authenticated client.
     /// </summary>
     [HttpGet("me/documents")]
-    public async Task<ActionResult<IEnumerable<ClientDocumentResponse>>> GetDocuments(CancellationToken cancellationToken)
+    public async Task<ActionResult> GetDocuments(CancellationToken cancellationToken)
     {
         var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
             ?? User.FindFirstValue(ClaimTypes.Email);
@@ -136,38 +114,18 @@ public class ClientsController : ControllerBase
             return Unauthorized(new { message = "Invalid session." });
         }
 
-        var documents = new List<ClientDocumentResponse>
-        {
-            new()
-            {
-                Id = "DOC-001",
-                Name = "June 2026 Performance Report.pdf",
-                Type = "Report",
-                Version = "1.0",
-                PublishedAt = DateTime.UtcNow.AddDays(-1).ToString("O"),
-                SizeLabel = "1.8 MB"
-            },
-            new()
-            {
-                Id = "DOC-002",
-                Name = "Q2 2026 Portfolio Valuation Statement.pdf",
-                Type = "Statement",
-                Version = "1.0",
-                PublishedAt = DateTime.UtcNow.AddDays(-3).ToString("O"),
-                SizeLabel = "820 KB"
-            },
-            new()
-            {
-                Id = "DOC-003",
-                Name = "PrimeXchanges Disclosures & Terms of Business.pdf",
-                Type = "Policy",
-                Version = "3.2",
-                PublishedAt = DateTime.UtcNow.AddMonths(-2).ToString("O"),
-                SizeLabel = "2.4 MB"
-            }
-        };
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var client = await _dbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Email == normalizedEmail, cancellationToken);
 
-        return Ok(documents);
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        var json = string.IsNullOrWhiteSpace(client.DocumentsJson) ? "[]" : client.DocumentsJson;
+        return Ok(System.Text.Json.Nodes.JsonNode.Parse(json));
     }
 }
 

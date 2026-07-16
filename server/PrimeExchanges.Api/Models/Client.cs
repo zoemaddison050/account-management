@@ -31,4 +31,8 @@ public class Client
     public string Status { get; set; } = "active";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public string PortfoliosJson { get; set; } = "[]";
+    public string DocumentsJson { get; set; } = "[]";
+    public string ActivityJson { get; set; } = "[]";
 }

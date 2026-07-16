@@ -88,7 +88,7 @@ export default function ApplyDownload() {
   const selectedManager: AccountManager | undefined = isNoPreference
     ? undefined
     : managers.find((m) => m.name === draft.preferredManager);
-  const managerDisplayName = isNoPreference ? 'Prime Exchanges' : (selectedManager?.name ?? draft.preferredManager);
+  const managerDisplayName = isNoPreference ? 'PrimeXchanges' : (selectedManager?.name ?? draft.preferredManager);
   const managerRoleLabel = isNoPreference ? 'Account Management Team' : (selectedManager?.title ?? 'Account Manager');
 
   const canDownloadSigned = !sigEmpty && sigDate.trim() !== '';
@@ -176,14 +176,14 @@ export default function ApplyDownload() {
                 {companySig ? (
                   <img
                     src={companySig.dataUrl}
-                    alt="Prime Exchanges company signature"
+                    alt="PrimeXchanges company signature"
                     className="signature-preview-img"
                     style={{ aspectRatio: companySig.aspectRatio }}
                   />
                 ) : (
-                  <p style={{ fontFamily: "'Times New Roman', serif", fontStyle: 'italic', fontSize: '1.15rem', color: 'var(--navy-800)', marginBottom: 'var(--space-1)' }}>Prime Exchanges</p>
+                  <p style={{ fontFamily: "'Times New Roman', serif", fontStyle: 'italic', fontSize: '1.15rem', color: 'var(--navy-800)', marginBottom: 'var(--space-1)' }}>PrimeXchanges</p>
                 )}
-                <p className="text-muted" style={{ fontSize: '0.82rem' }}>Prime Exchanges Ltd.</p>
+                <p className="text-muted" style={{ fontSize: '0.82rem' }}>PrimeXchanges Ltd.</p>
                 <p className="text-muted" style={{ fontSize: '0.78rem' }}>support@primexchanges.com</p>
               </div>
               <div className="signature-preview-card signature-prefilled">

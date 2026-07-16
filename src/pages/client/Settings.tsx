@@ -32,36 +32,9 @@ export default function Settings() {
       {/* Security */}
       <div className="card" style={{ marginBottom: 'var(--space-5)' }}>
         <h3 style={{ fontSize: '1.1rem', marginBottom: 'var(--space-2)' }}>Security</h3>
-        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 'var(--space-5)' }}>Protect your account with strong security settings.</p>
+        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 'var(--space-5)' }}>Your account uses secure passwordless magic links for authentication. Password management is not required.</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {/* Password */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', background: 'var(--navy-50)', borderRadius: 'var(--radius)' }}>
-            <div>
-              <p style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--navy-800)' }}>Password</p>
-              <p className="text-muted" style={{ fontSize: '0.82rem' }}>Last changed 45 days ago</p>
-            </div>
-            <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>Change Password</button>
-          </div>
-
-          {/* MFA */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', background: 'var(--navy-50)', borderRadius: 'var(--radius)' }}>
-            <div>
-              <p style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--navy-800)' }}>Multi-Factor Authentication</p>
-              <p className="text-muted" style={{ fontSize: '0.82rem' }}>
-                {prefs.twoFactor ? 'Enabled — authenticator app' : 'Not enabled — strongly recommended'}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-              <span className={`badge ${prefs.twoFactor ? 'badge-success' : 'badge-warning'}`}>
-                {prefs.twoFactor ? 'Active' : 'Inactive'}
-              </span>
-              <button onClick={() => toggle('twoFactor')} className="btn btn-ghost" style={{ fontSize: '0.82rem' }}>
-                {prefs.twoFactor ? 'Disable' : 'Enable'}
-              </button>
-            </div>
-          </div>
-
           {/* Active sessions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', background: 'var(--navy-50)', borderRadius: 'var(--radius)' }}>
             <div>

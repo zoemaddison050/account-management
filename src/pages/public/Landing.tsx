@@ -50,7 +50,7 @@ export default function Landing() {
         <div className="container" style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ maxWidth: '640px' }}>
             <p style={{ color: 'var(--gold-400)', fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 'var(--space-4)' }}>
-              Prime Exchanges · Managed Account Service
+              PrimeXchanges · Managed Account Service
             </p>
             <h1 style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)', color: 'var(--white)', lineHeight: 1.15, marginBottom: 'var(--space-5)' }}>
               Your portfolio,<br />
@@ -87,7 +87,7 @@ export default function Landing() {
           <SectionTitle
             eyebrow="What we offer"
             title="A simpler way to stay informed about your managed portfolio"
-            subtitle="The portal is the relationship and reporting layer — not the trading engine. Prime Exchanges remains the source platform for all trading and portfolio records."
+            subtitle="The portal is the relationship and reporting layer — not the trading engine. PrimeXchanges remains the source platform for all trading and portfolio records."
             center
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-5)' }}>

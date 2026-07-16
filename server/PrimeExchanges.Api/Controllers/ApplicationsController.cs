@@ -245,7 +245,7 @@ public class ApplicationsController : ControllerBase
         return File(bytes, "application/pdf", $"PrimeXchanges-Application-{application.Reference}.pdf");
     }
 
-    private byte[] GenerateApplicationPdf(Application application, string? signatureBase64, string? signatureDate)
+    public static byte[] GenerateApplicationPdf(Application application, string? signatureBase64, string? signatureDate)
     {
         // Create document
         var document = new PdfDocument();
@@ -321,7 +321,7 @@ public class ApplicationsController : ControllerBase
         gfx.DrawString("ASSIGNED ACCOUNT MANAGER", sectionHeaderFont, orangeBrush, 40, 315);
         gfx.DrawRectangle(boxBrush, 40, 325, page.Width - 80, 50);
         
-        string managerName = string.IsNullOrEmpty(application.AssignedReviewer) ? "Prime Exchanges Account Team" : application.AssignedReviewer;
+        string managerName = string.IsNullOrEmpty(application.AssignedReviewer) ? "PrimeXchanges Account Team" : application.AssignedReviewer;
         string managerRole = string.IsNullOrEmpty(application.AssignedReviewer) ? "No Preference" : "Preferred Account Manager";
         
         gfx.DrawString("Assigned Manager:", bodyBoldFont, labelBrush, labelX, 345);
@@ -335,9 +335,9 @@ public class ApplicationsController : ControllerBase
         var termsText = new[]
         {
             "By signing below, the applicant acknowledges that they have received and reviewed the current Privacy Policy,",
-            "Terms of Service, and all jurisdictional disclosures of Prime Exchanges. The applicant consents to the collection,",
+            "Terms of Service, and all jurisdictional disclosures of PrimeXchanges. The applicant consents to the collection,",
             "processing, and secure storage of their contact details for verification, routing, and compliance screening purposes.",
-            "Prime Exchanges will never request credentials, passwords, bank detail updates, or API keys via this application form.",
+            "PrimeXchanges will never request credentials, passwords, bank detail updates, or API keys via this application form.",
             "For support or to revoke consent, contact compliance@primexchanges.com citing the reference above."
         };
         
@@ -359,7 +359,7 @@ public class ApplicationsController : ControllerBase
         // Column 1: Company Representative
         gfx.DrawRectangle(boxBrush, 40, sigY, colWidth, sigHeight);
         // Draw a stylized signature line or script font for company
-        gfx.DrawString("Prime Exchanges Ltd.", new XFont("Times New Roman", 14, XFontStyle.Italic), new XSolidBrush(navyColor), 50, sigY + 35);
+        gfx.DrawString("PrimeXchanges Ltd.", new XFont("Times New Roman", 14, XFontStyle.Italic), new XSolidBrush(navyColor), 50, sigY + 35);
         gfx.DrawLine(XPens.SlateGray, 50, sigY + sigHeight - 15, 40 + colWidth - 10, sigY + sigHeight - 15);
         gfx.DrawString("Authorized Officer", subtitleFont, new XSolidBrush(textDark), 50, sigY + sigHeight - 5);
         
@@ -390,7 +390,7 @@ public class ApplicationsController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to decode or draw applicant signature image.");
+                System.Console.WriteLine($"Failed to decode or draw applicant signature image: {ex}");
                 gfx.DrawString("[Signature Decode Error]", subtitleFont, new XSolidBrush(XColors.Red), appX + 10, sigY + 35);
             }
         }

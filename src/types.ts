@@ -1,5 +1,5 @@
 // ============================================================
-// Prime Exchanges — Type Definitions
+// PrimeXchanges — Type Definitions
 // ============================================================
 
 export type ApplicationStatus =
@@ -87,7 +87,7 @@ export interface Portfolio {
 export interface Holding {
   id: string;
   instrument: string;
-  type: 'Equity' | 'Bond' | 'Fund' | 'Cash' | 'Commodity' | 'Other';
+  type: 'Equity' | 'Bond' | 'Fund' | 'Cash' | 'Commodity' | 'Crypto' | 'Forex' | 'Other';
   quantity: number;
   value: number;
   allocationPct: number;
@@ -185,6 +185,7 @@ export interface ClientProfile {
   managerName?: string;
   since: string;
   status: 'active' | 'paused';
+  portfolios?: Portfolio[];
 }
 
 export interface StaffLoginVerify {

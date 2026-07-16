@@ -11,7 +11,9 @@ import {
   updateApplicationStatus,
   addApplicationNote,
   getAdminManagers,
-  issueApplicationInvitation
+  issueApplicationInvitation,
+  deleteAdminApplication,
+  getApplicationPdfBlob
 } from '../../lib/api';
 
 const statusFilters = ['All', 'Inquiry submitted', 'Form downloaded', 'Application received', 'Under review', 'Information requested', 'Approval pending', 'Approved — activation pending', 'Active client', 'Declined', 'Paused / closed'];
@@ -30,6 +32,8 @@ export default function Applications() {
   const [actionError, setActionError] = useState('');
   const [invitationMessage, setInvitationMessage] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
 
   const fetchApps = useCallback(() => {
     setLoading(true);
@@ -52,6 +56,49 @@ export default function Applications() {
   useEffect(() => {
     getAdminManagers().then(setManagers).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!selected) {
+      setPdfUrl(null);
+      return;
+    }
+    setLoadingPdf(true);
+    let active = true;
+    let currentUrl: string | null = null;
+    getApplicationPdfBlob(selected.id)
+      .then((blob) => {
+        if (!active) return;
+        currentUrl = URL.createObjectURL(blob);
+        setPdfUrl(currentUrl);
+        setLoadingPdf(false);
+      })
+      .catch(() => {
+        if (active) setLoadingPdf(false);
+      });
+
+    return () => {
+      active = false;
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+    };
+  }, [selected]);
+
+  const handleDeleteRequest = async () => {
+    if (!selected) return;
+    if (!window.confirm(`Are you sure you want to delete application request "${selected.applicantName}"? This action cannot be undone.`)) {
+      return;
+    }
+    setActionError('');
+    try {
+      await deleteAdminApplication(selected.id);
+      setSelected(null);
+      setSelectedDetail(null);
+      fetchApps();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Delete failed.');
+    }
+  };
 
   const selectApp = (app: Application) => {
     setSelected(app);
@@ -290,6 +337,22 @@ export default function Applications() {
               ))}
             </div>
 
+            {/* PDF Preview */}
+            <div style={{ marginTop: 'var(--space-5)', marginBottom: 'var(--space-5)' }}>
+              <h3 style={{ fontSize: '0.95rem', marginBottom: 'var(--space-3)' }}>Applicant PDF Preview</h3>
+              {loadingPdf ? (
+                <p className="text-muted" style={{ fontSize: '0.82rem' }}>Generating PDF preview...</p>
+              ) : pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  title="PDF Preview"
+                  style={{ width: '100%', height: '350px', border: '1px solid var(--line)', borderRadius: 'var(--radius)' }}
+                />
+              ) : (
+                <p className="text-muted" style={{ fontSize: '0.82rem' }}>PDF preview not available.</p>
+              )}
+            </div>
+
             <hr className="divider" />
 
             {/* Notes / timeline */}
@@ -407,6 +470,16 @@ export default function Applications() {
                 </button>
               ))}
             </div>
+
+            <hr className="divider" style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-5)' }} />
+            <button
+              type="button"
+              className="btn btn-block"
+              style={{ background: 'var(--danger)', color: 'var(--white)', border: 'none', fontSize: '0.88rem', padding: '0.6rem' }}
+              onClick={handleDeleteRequest}
+            >
+              Delete Application Request
+            </button>
           </div>
         </div>
       )}

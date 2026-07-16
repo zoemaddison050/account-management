@@ -13,7 +13,7 @@ export default function PortfolioSync() {
       <PageHeader
         eyebrow="Internal · Portfolio Sync"
         title="Portfolio Data Integration"
-        subtitle="Integration status, sync logs, and reconciliation results. Prime Exchanges is the source of truth. Data is never scraped from authenticated sessions."
+        subtitle="Integration status, sync logs, and reconciliation results. PrimeXchanges is the source of truth. Data is never scraped from authenticated sessions."
       />
 
       {/* Integration status */}
@@ -22,7 +22,7 @@ export default function PortfolioSync() {
           <h3 style={{ fontSize: '1.05rem', marginBottom: 'var(--space-4)' }}>Data Source</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {[
-              { label: 'Source', value: 'Prime Exchanges Official API' },
+              { label: 'Source', value: 'PrimeXchanges Official API' },
               { label: 'Sync Schedule', value: 'Daily at 06:15 GMT' },
               { label: 'Reconciliation', value: 'Automated, pre-publication' },
               { label: 'Method', value: 'Official API integration (approved)' },

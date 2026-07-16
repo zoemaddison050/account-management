@@ -11,7 +11,7 @@ const sections = [
   },
   {
     title: 'No Guarantees',
-    body: 'Prime Exchanges does not guarantee any return, outcome, or performance result. Any representation of performance must be approved by the compliance owner. The portal displays factual, verified data — not projections or promises.',
+    body: 'PrimeXchanges does not guarantee any return, outcome, or performance result. Any representation of performance must be approved by the compliance owner. The portal displays factual, verified data — not projections or promises.',
   },
   {
     title: 'Jurisdictional Limitations',
@@ -23,7 +23,7 @@ const sections = [
   },
   {
     title: 'Data Source',
-    body: 'Portfolio data displayed in the client portal is sourced from the approved Prime Exchanges data source — via official API, secure scheduled export, or authorized manual upload with four-eyes review. The portal does not scrape authenticated websites or use client credentials to obtain data.',
+    body: 'Portfolio data displayed in the client portal is sourced from the approved PrimeXchanges data source — via official API, secure scheduled export, or authorized manual upload with four-eyes review. The portal does not scrape authenticated websites or use client credentials to obtain data.',
   },
 ];
 

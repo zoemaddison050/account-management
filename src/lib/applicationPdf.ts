@@ -250,7 +250,7 @@ export function downloadApplicationPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor('#304D60');
-  doc.text('Your submitted details are shown below. Complete the applicant signature and return the form to Prime Exchanges.', 15, 42);
+  doc.text('Your submitted details are shown below. Complete the applicant signature and return the form to PrimeXchanges.', 15, 42);
 
   // ---- Section 1: Application reference (prefilled) ----
   sectionHeading(doc, '1. Application reference', 49);
@@ -283,7 +283,7 @@ export function downloadApplicationPdf(
   doc.setFontSize(9);
   doc.setTextColor('#304D60');
   doc.text(
-    'By signing below, the applicant confirms that the information provided above is accurate and complete, and consents to be contacted by Prime Exchanges regarding the account management service.',
+    'By signing below, the applicant confirms that the information provided above is accurate and complete, and consents to be contacted by PrimeXchanges regarding the account management service.',
     15, 163, { maxWidth: 180 },
   );
 
@@ -296,7 +296,7 @@ export function downloadApplicationPdf(
   const managers = options.managers ?? [];
   const manager = findManager(draft.preferredManager, managers);
   const isNoPreference = draft.preferredManager === 'No preference';
-  const managerName = isNoPreference ? 'Prime Exchanges' : (manager?.name ?? draft.preferredManager);
+  const managerName = isNoPreference ? 'PrimeXchanges' : (manager?.name ?? draft.preferredManager);
   const managerTitle = isNoPreference ? 'Account Management Team' : (manager?.title ?? 'Account Manager');
   const managerEmail = isNoPreference ? 'support@primexchanges.com' : (manager?.email ?? 'support@primexchanges.com');
 
@@ -310,10 +310,10 @@ export function downloadApplicationPdf(
   // 1. Company signature
   drawSignatureBlock(doc, col1X, sigY, colWidth, {
     header: 'FOR THE COMPANY',
-    signatureText: 'Prime Exchanges',
+    signatureText: 'PrimeXchanges',
     signatureImage: options.companySignatureImage ?? undefined,
     signatureAspectRatio: options.companySignatureAspectRatio,
-    printedName: 'Prime Exchanges Ltd.',
+    printedName: 'PrimeXchanges Ltd.',
     role: 'Authorised Service Provider',
     email: 'support@primexchanges.com',
     date: issuedDate,
