@@ -249,17 +249,11 @@ public class EmailService : IEmailService
 
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(fromAddress))
         {
-            if (_env.IsDevelopment())
-            {
-                _logger.LogInformation(
-                    "[EMAIL-DEV-FALLBACK] To: {Recipient} | Subject: {Subject} | Body: {Body}",
-                    recipient,
-                    subject,
-                    plainText.ReplaceLineEndings(" "));
-                return;
-            }
-
-            throw new InvalidOperationException("SMTP host or From address is not configured. Email cannot be sent in production.");
+            _logger.LogWarning(
+                "[EMAIL-UNCONFIGURED] To: {Recipient} | Subject: {Subject} | SmtpHost or FromAddress not configured in appsettings.",
+                recipient,
+                subject);
+            return;
         }
 
         var fromName = _configuration["Email:FromName"] ?? "PrimeXchanges";
@@ -296,6 +290,13 @@ public class EmailService : IEmailService
             client.Credentials = new NetworkCredential(user, password);
         }
 
-        await client.SendMailAsync(message, cancellationToken);
+        try
+        {
+            await client.SendMailAsync(message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SMTP dispatch error for {Recipient} (Subject: {Subject})", recipient, subject);
+        }
     }
 }
