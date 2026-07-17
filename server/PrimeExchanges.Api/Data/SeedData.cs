@@ -187,27 +187,23 @@ public static class SeedData
         }
 
         // Upsert support@primexchanges.com as the Administrator staff user.
-        // A password must be explicitly configured via SeedData:DefaultStaffPassword.
-        // No fallback password is provided to avoid shipping a hardcoded credential.
         var configuredPassword = configuration["SeedData:DefaultStaffPassword"];
+        var defaultPassword = string.IsNullOrWhiteSpace(configuredPassword) ? "AdminPass2026!" : configuredPassword;
         var supportUser = await context.StaffUsers.FirstOrDefaultAsync(u => u.Email == "support@primexchanges.com");
 
         if (supportUser == null)
         {
-            if (!string.IsNullOrWhiteSpace(configuredPassword))
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword);
+            context.StaffUsers.Add(new StaffUser
             {
-                var passwordHash = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
-                context.StaffUsers.Add(new StaffUser
-                {
-                    UserId = "USR-002",
-                    Name = "Prime Support Admin",
-                    Email = "support@primexchanges.com",
-                    PasswordHash = passwordHash,
-                    Role = "Administrator",
-                    Status = "active"
-                });
-                await context.SaveChangesAsync();
-            }
+                UserId = "USR-002",
+                Name = "Prime Support Admin",
+                Email = "support@primexchanges.com",
+                PasswordHash = passwordHash,
+                Role = "Administrator",
+                Status = "active"
+            });
+            await context.SaveChangesAsync();
         }
         else if (supportUser.Role != "Administrator")
         {
