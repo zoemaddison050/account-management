@@ -1,0 +1,1 @@
+const r="prime-exchanges.application-draft";function a(t){sessionStorage.setItem(r,JSON.stringify(t))}function n(){try{const t=sessionStorage.getItem(r);if(!t)return null;const e=JSON.parse(t);return!e.reference||!e.firstName||!e.lastName||!e.email||!e.preferredManager?null:e}catch{return null}}export{n as g,a as s};

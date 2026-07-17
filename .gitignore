@@ -33,7 +33,7 @@ appsettings.Staging.json
 secrets.json
 
 # Published output
-publish/
+# publish/ tracked for MonsterASP GitHub sync
 
 # Deployment artifacts
 deployment/
