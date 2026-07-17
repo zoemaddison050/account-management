@@ -186,8 +186,13 @@ public static class SeedData
             await context.SaveChangesAsync();
         }
 
-        // Seed support@primexchanges.com as the Administrator staff user.
-        var configuredPassword = configuration["SeedData:DefaultStaffPassword"] ?? "AdminPassword123!";
+        // Seed/synchronize support@primexchanges.com as the Administrator staff user.
+        var configuredPassword = configuration["SeedData:DefaultStaffPassword"];
+        if (string.IsNullOrWhiteSpace(configuredPassword))
+        {
+            configuredPassword = "YourDefaultAdminPassword123!";
+        }
+
         var supportUser = await context.StaffUsers.FirstOrDefaultAsync(u => u.Email == "support@primexchanges.com");
 
         if (supportUser == null)
@@ -204,12 +209,39 @@ public static class SeedData
             });
             await context.SaveChangesAsync();
         }
-        else if (supportUser.Role != "Administrator")
+        else
         {
-            supportUser.Role = "Administrator";
-            supportUser.Name = "Prime Support Admin";
-            await context.SaveChangesAsync();
+            bool passwordMatch = false;
+            try
+            {
+                passwordMatch = !string.IsNullOrEmpty(supportUser.PasswordHash) &&
+                                BCrypt.Net.BCrypt.Verify(configuredPassword, supportUser.PasswordHash);
+            }
+            catch
+            {
+                passwordMatch = false;
+            }
+
+            bool modified = false;
+            if (!passwordMatch)
+            {
+                supportUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+                modified = true;
+            }
+
+            if (supportUser.Role != "Administrator")
+            {
+                supportUser.Role = "Administrator";
+                supportUser.Name = "Prime Support Admin";
+                modified = true;
+            }
+
+            if (modified)
+            {
+                await context.SaveChangesAsync();
+            }
         }
+
 
 
         await context.SaveChangesAsync();
