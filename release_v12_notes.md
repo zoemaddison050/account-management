@@ -129,7 +129,7 @@ To safely roll out Release V12 to the MonsterASP host:
    This compiles TypeScript and produces the static SPA output into `server/PrimeExchanges.Api/wwwroot/`.
 3. **Build and publish the backend**:
    ```bash
-   dotnet publish server/PrimeExchanges.Api/PrimeExchanges.Api.csproj -c Release -o ./publish
+   dotnet publish server/PrimeExchanges.Api/PrimeExchanges.Api.csproj -c Release -r win-x64 --self-contained true -o ./publish
    ```
 4. **File maintenance on MonsterASP**:
    - Access the server files via FTP or the control panel file explorer.

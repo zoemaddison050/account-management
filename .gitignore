@@ -48,6 +48,4 @@ deployment/
 *.log
 output/
 temp/
-wwwroot/
-/server/PrimeExchanges.Api/wwwroot/
 *.zip
