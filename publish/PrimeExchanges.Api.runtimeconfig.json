@@ -1,15 +1,14 @@
 {
   "runtimeOptions": {
     "tfm": "net9.0",
-    "rollForward": "LatestMajor",
-    "frameworks": [
+    "includedFrameworks": [
       {
         "name": "Microsoft.NETCore.App",
-        "version": "9.0.0"
+        "version": "9.0.17"
       },
       {
         "name": "Microsoft.AspNetCore.App",
-        "version": "9.0.0"
+        "version": "9.0.17"
       }
     ],
     "configProperties": {
