@@ -187,29 +187,45 @@ public static class SeedData
         }
 
         // Upsert support@primexchanges.com as the Administrator staff user.
+        // The password is read dynamically from configuration (SeedData:DefaultStaffPassword in appsettings.json or environment variable).
         var configuredPassword = configuration["SeedData:DefaultStaffPassword"];
-        var defaultPassword = string.IsNullOrWhiteSpace(configuredPassword) ? "AdminPass2026!" : configuredPassword;
         var supportUser = await context.StaffUsers.FirstOrDefaultAsync(u => u.Email == "support@primexchanges.com");
 
         if (supportUser == null)
         {
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword);
-            context.StaffUsers.Add(new StaffUser
+            if (!string.IsNullOrWhiteSpace(configuredPassword))
             {
-                UserId = "USR-002",
-                Name = "Prime Support Admin",
-                Email = "support@primexchanges.com",
-                PasswordHash = passwordHash,
-                Role = "Administrator",
-                Status = "active"
-            });
-            await context.SaveChangesAsync();
+                var passwordHash = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+                context.StaffUsers.Add(new StaffUser
+                {
+                    UserId = "USR-002",
+                    Name = "Prime Support Admin",
+                    Email = "support@primexchanges.com",
+                    PasswordHash = passwordHash,
+                    Role = "Administrator",
+                    Status = "active"
+                });
+                await context.SaveChangesAsync();
+            }
         }
-        else if (supportUser.Role != "Administrator")
+        else
         {
-            supportUser.Role = "Administrator";
-            supportUser.Name = "Prime Support Admin";
-            await context.SaveChangesAsync();
+            bool modified = false;
+            if (supportUser.Role != "Administrator")
+            {
+                supportUser.Role = "Administrator";
+                supportUser.Name = "Prime Support Admin";
+                modified = true;
+            }
+            if (!string.IsNullOrWhiteSpace(configuredPassword))
+            {
+                supportUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+                modified = true;
+            }
+            if (modified)
+            {
+                await context.SaveChangesAsync();
+            }
         }
 
         await context.SaveChangesAsync();
