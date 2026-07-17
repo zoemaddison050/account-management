@@ -56,40 +56,52 @@ public class ApplicationsController : ControllerBase
 
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        // Prevent duplicate submissions within the same day for the same email.
-        var duplicate = await _dbContext.Applications
-            .AnyAsync(a => a.Email == normalizedEmail &&
-                           a.SubmittedAt >= DateTime.UtcNow.AddHours(-24),
-                      cancellationToken);
+        var existingApp = await _dbContext.Applications
+            .FirstOrDefaultAsync(a => a.Email == normalizedEmail, cancellationToken);
 
-        if (duplicate)
+        string applicationId;
+        string reference;
+        Application application;
+
+        var preferredMgr = string.IsNullOrWhiteSpace(request.PreferredManager) ? "PrimeXchanges Account Team" : request.PreferredManager.Trim();
+
+        if (existingApp != null)
         {
-            // Return 200 to avoid revealing whether the email exists.
-            _logger.LogWarning("Duplicate application attempt for {Email}", normalizedEmail);
-            return Ok(new SubmitApplicationResponse
-            {
-                Message = "Your application has been received. We'll be in touch shortly.",
-            });
+            existingApp.ApplicantName = $"{request.FirstName.Trim()} {request.LastName.Trim()}";
+            existingApp.Country = request.Country.Trim();
+            existingApp.AssignedReviewer = preferredMgr;
+            existingApp.Status = "Inquiry submitted";
+            existingApp.SubmittedAt = DateTime.UtcNow;
+            existingApp.LastUpdated = DateTime.UtcNow;
+            existingApp.Route = "online";
+
+            applicationId = existingApp.ApplicationId;
+            reference = existingApp.Reference;
+            application = existingApp;
+
+            _logger.LogInformation("Application re-submitted for {Email}. Updated record {ApplicationId}", normalizedEmail, applicationId);
         }
-
-        var applicationId = $"APP-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
-        var reference = $"PX-{DateTime.UtcNow:yy}{Random.Shared.Next(10000, 99999)}";
-
-        var application = new Application
+        else
         {
-            ApplicationId = applicationId,
-            Reference = reference,
-            ApplicantName = $"{request.FirstName.Trim()} {request.LastName.Trim()}",
-            Email = normalizedEmail,
-            Country = request.Country.Trim(),
-            Status = "Inquiry submitted",
-            AssignedReviewer = request.PreferredManager.Trim(),
-            Route = "online",
-            SubmittedAt = DateTime.UtcNow,
-            LastUpdated = DateTime.UtcNow,
-        };
+            applicationId = $"APP-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
+            reference = $"PX-{DateTime.UtcNow:yy}{Random.Shared.Next(10000, 99999)}";
 
-        _dbContext.Applications.Add(application);
+            application = new Application
+            {
+                ApplicationId = applicationId,
+                Reference = reference,
+                ApplicantName = $"{request.FirstName.Trim()} {request.LastName.Trim()}",
+                Email = normalizedEmail,
+                Country = request.Country.Trim(),
+                Status = "Inquiry submitted",
+                AssignedReviewer = preferredMgr,
+                Route = "online",
+                SubmittedAt = DateTime.UtcNow,
+                LastUpdated = DateTime.UtcNow,
+            };
+
+            _dbContext.Applications.Add(application);
+        }
 
         // Record consent.
         _dbContext.ConsentRecords.Add(new ConsentRecord

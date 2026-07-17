@@ -58,22 +58,25 @@ public class AdminController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats(CancellationToken cancellationToken)
     {
-        var totalApps = await _dbContext.Applications.CountAsync(cancellationToken);
+        var query = GetBaseApplicationsQuery();
+
+        var totalApps = await query.CountAsync(cancellationToken);
         
-        var pendingReview = await _dbContext.Applications.CountAsync(a => 
+        var pendingReview = await query.CountAsync(a => 
             a.Status == "Inquiry submitted" || 
+            a.Status == "Form downloaded" ||
             a.Status == "Application received" || 
             a.Status == "Under review" || 
             a.Status == "Information requested" || 
             a.Status == "Approval pending", 
             cancellationToken);
 
-        var approved = await _dbContext.Applications.CountAsync(a => 
+        var approved = await query.CountAsync(a => 
             a.Status == "Approved — activation pending" || 
             a.Status == "Active client", 
             cancellationToken);
 
-        var declined = await _dbContext.Applications.CountAsync(a => 
+        var declined = await query.CountAsync(a => 
             a.Status == "Declined", 
             cancellationToken);
 
@@ -86,6 +89,33 @@ public class AdminController : ControllerBase
         });
     }
 
+    private IQueryable<Models.Application> GetBaseApplicationsQuery()
+    {
+        var query = _dbContext.Applications.AsNoTracking().AsQueryable();
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
+
+        // If the user has the AccountManager role, allow them to see their assigned applications plus any unassigned/no-preference applications
+        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
+        {
+            var manager = _dbContext.AccountManagers
+                .FirstOrDefault(m => m.Email == userEmail);
+            if (manager != null)
+            {
+                query = query.Where(a => 
+                    a.AssignedManagerId == manager.ManagerId || 
+                    a.AssignedReviewer == manager.Name || 
+                    string.IsNullOrEmpty(a.AssignedReviewer) || 
+                    a.AssignedReviewer == "Unassigned" || 
+                    a.AssignedReviewer == "PrimeXchanges Account Team" ||
+                    a.AssignedReviewer == "No preference");
+            }
+        }
+
+        return query;
+    }
+
     /// <summary>
     /// Returns a list of all applications, filtered by status and/or search query.
     /// </summary>
@@ -95,24 +125,7 @@ public class AdminController : ControllerBase
         [FromQuery] string? search,
         CancellationToken cancellationToken)
     {
-        var query = _dbContext.Applications.AsNoTracking().AsQueryable();
-
-        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-        var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name;
-
-        if (string.Equals(role, "AccountManager", StringComparison.OrdinalIgnoreCase))
-        {
-            var manager = await _dbContext.AccountManagers
-                .FirstOrDefaultAsync(m => m.Email == userEmail, cancellationToken);
-            if (manager != null)
-            {
-                query = query.Where(a => a.AssignedManagerId == manager.ManagerId || a.AssignedReviewer == manager.Name);
-            }
-            else
-            {
-                query = query.Where(a => false);
-            }
-        }
+        var query = GetBaseApplicationsQuery();
 
         if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase))
         {

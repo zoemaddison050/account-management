@@ -50,14 +50,7 @@ public class EmailService : IEmailService
         var supportAddress = _configuration["Email:SupportAddress"];
         if (string.IsNullOrWhiteSpace(supportAddress))
         {
-            _logger.LogInformation(
-                "[APPLICATION-ALERT] Reference={Reference} Applicant={ApplicantName} Email={Email} Country={Country} PreferredManager={PreferredManager}",
-                reference,
-                applicantName,
-                applicantEmail,
-                country,
-                preferredManager);
-            return;
+            supportAddress = "support@primexchanges.com";
         }
 
         var managerText = string.IsNullOrWhiteSpace(preferredManager)

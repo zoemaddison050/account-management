@@ -1,0 +1,1 @@
+import{j as i,k as n}from"./index-DhbPL7xq.js";const r={ok:"Verified",stale:"Stale — last verified",error:"Sync error"};function m({status:e,asOf:o,lastSync:t,compact:a}){const s=o||t;return i.jsxs("span",{className:`freshness ${e}`,title:s?n(s):void 0,children:[i.jsx("span",{className:"dot"}),!a&&(s?`${r[e]} ${n(s)}`:r[e]),a&&r[e]]})}export{m as F};

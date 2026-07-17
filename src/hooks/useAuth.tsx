@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, createContext, useContext } from 'react';
+import { useState, useCallback, createContext, useContext } from 'react';
 import type { AuthSession, MagicLinkRequest, MagicLinkVerify, StaffLoginVerify } from '../types';
 import {
   requestMagicLink as apiRequestMagicLink,
