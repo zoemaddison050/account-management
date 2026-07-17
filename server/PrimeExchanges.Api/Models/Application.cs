@@ -41,4 +41,8 @@ public class Application
 
     [MaxLength(50)]
     public string Route { get; set; } = "online";
+
+    public string? SignatureDataUrl { get; set; }
+
+    public DateTime? SignedAt { get; set; }
 }

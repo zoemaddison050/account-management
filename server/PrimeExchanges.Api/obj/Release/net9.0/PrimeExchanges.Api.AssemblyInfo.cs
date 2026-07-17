@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PrimeExchanges.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+04e8e2c18c0e7cb8805eddcafdd641aad91d3488")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b3af02e052cdbf95198c6a6a5af1e25c58403d4a")]
 [assembly: System.Reflection.AssemblyProductAttribute("PrimeExchanges.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PrimeExchanges.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

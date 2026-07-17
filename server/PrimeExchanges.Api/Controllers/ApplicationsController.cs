@@ -230,11 +230,16 @@ public class ApplicationsController : ControllerBase
         }
 
         var application = await _dbContext.Applications
-            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.ApplicationId == grant.ApplicationId, cancellationToken);
 
         if (application == null)
             return NotFound();
+
+        // Save signature and signed timestamp to Application entity
+        application.SignatureDataUrl = request.Signature;
+        application.SignedAt = DateTime.UtcNow;
+        application.Status = "Application received";
+        application.LastUpdated = DateTime.UtcNow;
 
         // Mark the grant as used (single-use).
         grant.UsedAt = DateTime.UtcNow;
@@ -247,6 +252,8 @@ public class ApplicationsController : ControllerBase
 
     public static byte[] GenerateApplicationPdf(Application application, string? signatureBase64, string? signatureDate)
     {
+        signatureBase64 = !string.IsNullOrWhiteSpace(signatureBase64) ? signatureBase64 : application.SignatureDataUrl;
+        signatureDate = !string.IsNullOrWhiteSpace(signatureDate) ? signatureDate : (application.SignedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
         // Create document
         var document = new PdfDocument();
         document.Info.Title = $"PrimeXchanges Application - {application.Reference}";

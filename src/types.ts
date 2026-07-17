@@ -46,6 +46,8 @@ export interface Application {
   submittedAt: string;
   lastUpdated: string;
   route: 'online' | 'download';
+  signatureDataUrl?: string;
+  signedAt?: string;
   notes: { author: string; date: string; text: string }[];
 }
 

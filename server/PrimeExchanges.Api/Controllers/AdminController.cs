@@ -143,7 +143,9 @@ public class AdminController : ControllerBase
             AssignedReviewer = string.IsNullOrWhiteSpace(a.AssignedReviewer) ? "Unassigned" : a.AssignedReviewer,
             SubmittedAt = a.SubmittedAt.ToString("O"),
             LastUpdated = a.LastUpdated.ToString("O"),
-            Route = a.Route
+            Route = a.Route,
+            SignatureDataUrl = a.SignatureDataUrl,
+            SignedAt = a.SignedAt?.ToString("O")
         });
 
         return Ok(response);
@@ -208,6 +210,8 @@ public class AdminController : ControllerBase
             SubmittedAt = app.SubmittedAt.ToString("O"),
             LastUpdated = app.LastUpdated.ToString("O"),
             Route = app.Route,
+            SignatureDataUrl = app.SignatureDataUrl,
+            SignedAt = app.SignedAt?.ToString("O"),
             Notes = notes
         });
     }
@@ -1063,6 +1067,8 @@ public class AdminApplicationResponse
     public string SubmittedAt { get; set; } = string.Empty;
     public string LastUpdated { get; set; } = string.Empty;
     public string Route { get; set; } = string.Empty;
+    public string? SignatureDataUrl { get; set; }
+    public string? SignedAt { get; set; }
 }
 
 public class ApplicationNoteDto

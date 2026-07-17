@@ -321,7 +321,7 @@ export default function Applications() {
             <span className={`badge ${statusColors[selected.status] || 'badge-muted'}`} style={{ marginBottom: 'var(--space-5)' }}>{selected.status}</span>
 
             {/* Details */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
               {[
                 { label: 'Email', value: selected.email },
                 { label: 'Country', value: selected.country },
@@ -329,12 +329,46 @@ export default function Applications() {
                 { label: 'Assigned reviewer', value: selected.assignedReviewer },
                 { label: 'Submitted', value: formatDateTime(selected.submittedAt) },
                 { label: 'Last updated', value: formatDateTime(selected.lastUpdated) },
+                { label: 'Signature status', value: (selectedDetail?.signatureDataUrl || selected.signatureDataUrl) ? `Signed on ${formatDateTime(selectedDetail?.signedAt || selected.signedAt || selected.lastUpdated)}` : 'Pending Signature' },
               ].map((d) => (
                 <div key={d.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
                   <span style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', flexShrink: 0 }}>{d.label}</span>
                   <span style={{ fontSize: '0.88rem', fontWeight: 500, color: 'var(--navy-800)', textAlign: 'right' }}>{d.value}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Application Signatures Block */}
+            <div style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)', background: 'var(--navy-50)', borderRadius: 'var(--radius)', border: '1px solid var(--line)' }}>
+              <h3 style={{ fontSize: '0.9rem', color: 'var(--navy-800)', marginBottom: 'var(--space-3)' }}>Application Signatures</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', textAlign: 'center' }}>
+                {/* 1. Company Signature */}
+                <div style={{ background: 'var(--white)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                  <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--navy-600)', textTransform: 'uppercase' }}>Company</p>
+                  <p style={{ fontFamily: 'serif', fontStyle: 'italic', fontSize: '1.05rem', color: 'var(--navy-800)', margin: 'var(--space-2) 0' }}>PrimeXchanges</p>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--ink-muted)' }}>PrimeXchanges Ltd.</p>
+                </div>
+                {/* 2. Account Manager Signature */}
+                <div style={{ background: 'var(--white)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                  <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--navy-600)', textTransform: 'uppercase' }}>Manager</p>
+                  <p style={{ fontFamily: 'serif', fontStyle: 'italic', fontSize: '1.05rem', color: 'var(--navy-800)', margin: 'var(--space-2) 0' }}>{selected.assignedReviewer !== 'Unassigned' ? selected.assignedReviewer : 'PrimeXchanges'}</p>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--ink-muted)' }}>Account Manager</p>
+                </div>
+                {/* 3. Applicant Signature */}
+                <div style={{ background: 'var(--white)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                  <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--navy-600)', textTransform: 'uppercase' }}>Applicant</p>
+                  {(selectedDetail?.signatureDataUrl || selected.signatureDataUrl) ? (
+                    <img
+                      src={selectedDetail?.signatureDataUrl || selected.signatureDataUrl}
+                      alt="Applicant Signature"
+                      style={{ maxHeight: '40px', maxWidth: '100%', objectFit: 'contain', margin: 'var(--space-1) auto' }}
+                    />
+                  ) : (
+                    <p style={{ fontSize: '0.75rem', fontStyle: 'italic', color: 'var(--ink-muted)', margin: 'var(--space-2) 0' }}>Pending</p>
+                  )}
+                  <p style={{ fontSize: '0.7rem', color: 'var(--ink-muted)' }}>{selected.applicantName}</p>
+                </div>
+              </div>
             </div>
 
             {/* PDF Preview */}

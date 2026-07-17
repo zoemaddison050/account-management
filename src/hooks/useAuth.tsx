@@ -58,14 +58,9 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(() => loadSession());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Restore session on mount
-  useEffect(() => {
-    setSession(loadSession());
-  }, []);
 
   const requestMagicLink = useCallback(async (payload: MagicLinkRequest): Promise<{ email: string; expiresInMinutes: number }> => {
     setLoading(true);

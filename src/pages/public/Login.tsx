@@ -135,15 +135,14 @@ export default function Login() {
 
   const handleTokenChange = (value: string, index: number) => {
     const digit = value.replace(/\D/g, '').slice(-1);
-    if (!digit) return;
     setToken((prev) => {
-      const chars = prev.split('');
-      chars[index] = digit;
-      return chars.join('').slice(0, 6);
+      const chars = prev.padEnd(6, ' ').split('');
+      chars[index] = digit || ' ';
+      return chars.join('').trimEnd();
     });
     if (authError) clearError();
     if (resendSuccess) setResendSuccess(false);
-    if (index < 5) {
+    if (digit && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -249,6 +248,17 @@ export default function Login() {
                     {errors.email && <p className="form-error">{errors.email}</p>}
                   </div>
 
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-5)' }}>
+                    <input
+                      id="remember-client"
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label htmlFor="remember-client" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>Keep me signed in for this session</label>
+                  </div>
+
                   <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={authLoading}>
                     {authLoading ? 'Sending…' : 'Send Secure Code'}
                   </button>
@@ -332,8 +342,21 @@ export default function Login() {
                         value={token[index] || ''}
                         onChange={(e) => handleTokenChange(e.target.value, index)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Backspace' && !token[index] && index > 0) {
-                            inputRefs.current[index - 1]?.focus();
+                          if (e.key === 'Backspace' || e.key === 'Delete') {
+                            if (token[index]) {
+                              setToken((prev) => {
+                                const chars = prev.padEnd(6, ' ').split('');
+                                chars[index] = ' ';
+                                return chars.join('').trimEnd();
+                              });
+                            } else if (index > 0) {
+                              setToken((prev) => {
+                                const chars = prev.padEnd(6, ' ').split('');
+                                chars[index - 1] = ' ';
+                                return chars.join('').trimEnd();
+                              });
+                              inputRefs.current[index - 1]?.focus();
+                            }
                           }
                         }}
                         onPaste={(e) => {
@@ -424,8 +447,21 @@ export default function Login() {
                         value={token[index] || ''}
                         onChange={(e) => handleTokenChange(e.target.value, index)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Backspace' && !token[index] && index > 0) {
-                            inputRefs.current[index - 1]?.focus();
+                          if (e.key === 'Backspace' || e.key === 'Delete') {
+                            if (token[index]) {
+                              setToken((prev) => {
+                                const chars = prev.padEnd(6, ' ').split('');
+                                chars[index] = ' ';
+                                return chars.join('').trimEnd();
+                              });
+                            } else if (index > 0) {
+                              setToken((prev) => {
+                                const chars = prev.padEnd(6, ' ').split('');
+                                chars[index - 1] = ' ';
+                                return chars.join('').trimEnd();
+                              });
+                              inputRefs.current[index - 1]?.focus();
+                            }
                           }
                         }}
                         onPaste={(e) => {
