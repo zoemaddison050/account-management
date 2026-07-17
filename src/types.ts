@@ -193,3 +193,14 @@ export interface StaffLoginVerify {
   password?: string;
   remember?: boolean;
 }
+
+export interface SupportMessage {
+  id: number;
+  clientId: string;
+  clientName: string;
+  managerName?: string;
+  subject: string;
+  messageBody: string;
+  sentAt: string;
+  isFromClient: boolean;
+}

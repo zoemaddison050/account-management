@@ -24,4 +24,17 @@ public interface IEmailService
         string email,
         string code,
         CancellationToken cancellationToken = default);
+
+    Task SendValuationStatementReadyAsync(
+        string email,
+        string clientName,
+        string dateString,
+        CancellationToken cancellationToken = default);
+
+    Task SendSupportMessageAlertAsync(
+        string clientName,
+        string clientId,
+        string subject,
+        string messageBody,
+        CancellationToken cancellationToken = default);
 }

@@ -6,9 +6,11 @@ import FreshnessIndicator from '../../components/FreshnessIndicator';
 import { getCurrentClient, getClientActivity, getClientDocuments } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import type { ClientProfile, ActivityEvent, ClientDocument } from '../../types';
-import { demoClient, formatCurrency, formatDate } from '../../data/mockData';
+import { demoClient, formatDate } from '../../data/mockData';
+import { useCurrency } from '../../lib/currency';
 
 export default function Dashboard() {
+  const { formatCurrency } = useCurrency();
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
@@ -135,7 +137,7 @@ export default function Dashboard() {
                     <p className="mono text-muted" style={{ fontSize: '0.78rem', marginTop: '2px' }}>{p.externalAccountId}</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600, color: 'var(--navy-800)' }}>{formatCurrency(p.totalValue, p.currency)}</p>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 600, color: 'var(--navy-800)' }}>{formatCurrency(p.totalValue)}</p>
                     <FreshnessIndicator status={p.syncStatus} asOf={p.asOf} />
                   </div>
                 </div>

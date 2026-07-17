@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using PrimeExchanges.Api.Data;
 using PrimeExchanges.Api.Services;
@@ -31,9 +32,12 @@ if (builder.Environment.IsDevelopment())
 else
 {
     builder.Services.AddDbContext<AppDbContext>(options =>
+    {
         options.UseSqlServer(
             builder.Configuration.GetConnectionString("DefaultConnection"),
-            sql => sql.EnableRetryOnFailure(maxRetryCount: 3)));
+            sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
+        options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    });
 }
 
 // ─── Application services ─────────────────────────────────────────────────────
@@ -41,6 +45,16 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
 builder.Services.AddScoped<IStaffAuthService, StaffAuthService>();
+
+// ─── HTTP clients factory ─────────────────────────────────────────────────────
+builder.Services.AddHttpClient("fx", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(3);
+    client.BaseAddress = new Uri("https://open.er-api.com/");
+});
+
+// ─── In-memory cache ──────────────────────────────────────────────────────────
+builder.Services.AddMemoryCache();
 
 // ─── JWT authentication ───────────────────────────────────────────────────────
 var jwtSecret = builder.Configuration["Jwt:Secret"];
@@ -87,34 +101,78 @@ builder.Services.AddCors(options =>
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 builder.Services.AddRateLimiter(rl =>
 {
-    // Public application form: max 5 requests per 10 minutes per IP.
-    rl.AddFixedWindowLimiter("public-form", opts =>
+    rl.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Extract the real client IP, respecting X-Forwarded-For when behind proxies.
+    static string GetClientIp(HttpContext context)
     {
-        opts.Window = TimeSpan.FromMinutes(10);
-        opts.PermitLimit = 5;
-        opts.QueueLimit = 0;
-        opts.AutoReplenishment = true;
+        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwardedFor))
+        {
+            // X-Forwarded-For can contain multiple IPs; the left-most is the original client.
+            var firstIp = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(ip => ip.Trim())
+                .FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(firstIp))
+            {
+                return firstIp;
+            }
+        }
+
+        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+
+    // Public application form: max 5 requests per 10 minutes per IP.
+    rl.AddPolicy("public-form", context =>
+    {
+        var ip = GetClientIp(context);
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(10),
+            PermitLimit = 5,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
     });
 
     // PDF download: max 3 requests per 15 minutes per IP.
-    rl.AddFixedWindowLimiter("pdf-download", opts =>
+    rl.AddPolicy("pdf-download", context =>
     {
-        opts.Window = TimeSpan.FromMinutes(15);
-        opts.PermitLimit = 3;
-        opts.QueueLimit = 0;
-        opts.AutoReplenishment = true;
+        var ip = GetClientIp(context);
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(15),
+            PermitLimit = 3,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
     });
 
     // Auth endpoints: max 10 per minute per IP.
-    rl.AddFixedWindowLimiter("auth", opts =>
+    rl.AddPolicy("auth", context =>
     {
-        opts.Window = TimeSpan.FromMinutes(1);
-        opts.PermitLimit = 10;
-        opts.QueueLimit = 0;
-        opts.AutoReplenishment = true;
+        var ip = GetClientIp(context);
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(1),
+            PermitLimit = 10,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
     });
 
-    rl.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Support messages: max 3 messages per hour per IP.
+    rl.AddPolicy("support-message", context =>
+    {
+        var ip = GetClientIp(context);
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromHours(1),
+            PermitLimit = 3,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
 });
 
 // ─── Health checks ────────────────────────────────────────────────────────────
@@ -135,6 +193,7 @@ async Task ApplyDynamicClientColumnsAsync(AppDbContext context)
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN DocumentsJson TEXT NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN ActivityJson TEXT NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Clients ADD COLUMN PortfolioLastUpdated TEXT NULL;"); } catch {}
+            // SupportMessages is managed by EF migrations (see AddSupportMessages migration).
         }
         else
         {
@@ -142,6 +201,7 @@ async Task ApplyDynamicClientColumnsAsync(AppDbContext context)
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'DocumentsJson') ALTER TABLE [Clients] ADD [DocumentsJson] NVARCHAR(MAX) NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'ActivityJson') ALTER TABLE [Clients] ADD [ActivityJson] NVARCHAR(MAX) NULL;"); } catch {}
             try { await context.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Clients]') AND name = 'PortfolioLastUpdated') ALTER TABLE [Clients] ADD [PortfolioLastUpdated] DATETIME2 NULL;"); } catch {}
+            // SupportMessages is managed by EF migrations (see AddSupportMessages migration).
         }
     }
     catch (Exception ex)
@@ -160,11 +220,19 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await dbContext.Database.MigrateAsync();
-    await ApplyDynamicClientColumnsAsync(dbContext);
-    await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await dbContext.Database.MigrateAsync();
+        await ApplyDynamicClientColumnsAsync(dbContext);
+        await SeedData.InitializeAsync(dbContext, app.Configuration, app.Environment.IsDevelopment());
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogCritical(ex, "Failed to initialize database during startup. The app will continue but database operations may fail.");
+    }
 }
 
 // ─── Middleware pipeline ──────────────────────────────────────────────────────
@@ -177,12 +245,12 @@ if (app.Environment.IsDevelopment())
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
-    // CSP: tighten further once all CDN origins are known.
+    // CSP: Allow self framing and blob frame sources for PDF rendering.
     context.Response.Headers["Content-Security-Policy"] =
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';";
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; frame-ancestors 'self';";
     await next();
 });
 

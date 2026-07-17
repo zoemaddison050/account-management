@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
-import type { Client, AccountManager, Portfolio, Holding, ClientDocument, ActivityEvent } from '../../types';
+import type { Client, AccountManager, Portfolio, Holding, ClientDocument, ActivityEvent, SupportMessage } from '../../types';
 import {
   getAdminClients,
   getAdminManagers,
   deleteAdminClient,
   getAdminClientDetail,
   updateAdminClientPortfolioData,
+  getAdminClientSupportMessages,
   type AdminClientDetail
 } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../data/mockData';
@@ -23,7 +24,8 @@ export default function Clients() {
   // Drawer & detail states
   const [selected, setSelected] = useState<Client | null>(null);
   const [details, setDetails] = useState<AdminClientDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<'portfolios' | 'documents' | 'activity'>('portfolios');
+  const [activeTab, setActiveTab] = useState<'portfolios' | 'documents' | 'activity' | 'messages'>('portfolios');
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
 
   // Local state copy for editing
   const [localPortfolios, setLocalPortfolios] = useState<Portfolio[]>([]);
@@ -72,11 +74,16 @@ export default function Clients() {
   const handleSelectClient = async (client: Client) => {
     setSelected(client);
     setDetails(null);
+    setSupportMessages([]);
     setError('');
     setActiveTab('portfolios');
     try {
-      const data = await getAdminClientDetail(client.id);
+      const [data, msgs] = await Promise.all([
+        getAdminClientDetail(client.id),
+        getAdminClientSupportMessages(client.id)
+      ]);
       setDetails(data);
+      setSupportMessages(msgs);
     } catch (err) {
       setError('Unable to load client details.');
     }
@@ -379,7 +386,8 @@ export default function Clients() {
                   {[
                     { id: 'portfolios', label: 'Portfolios & Holdings' },
                     { id: 'documents', label: 'Documents' },
-                    { id: 'activity', label: 'Activity Timeline' }
+                    { id: 'activity', label: 'Activity Timeline' },
+                    { id: 'messages', label: 'Support Messages' }
                   ].map((t) => (
                     <button
                       key={t.id}
@@ -664,6 +672,41 @@ export default function Clients() {
                             )}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: Support Messages */}
+                  {activeTab === 'messages' && (
+                    <div>
+                      <div style={{ marginBottom: 'var(--space-4)' }}>
+                        <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Client Support Messages</h3>
+                        <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>
+                          These are the messages sent by this client to their assigned account manager. These messages are sent as alerts to <strong>support@primexchanges.com</strong>.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                        {supportMessages.length === 0 ? (
+                          <div style={{ padding: 'var(--space-6)', textAlign: 'center', background: 'var(--navy-50)', borderRadius: 'var(--radius)', color: 'var(--ink-muted)' }}>
+                            No support messages received from this client.
+                          </div>
+                        ) : (
+                          supportMessages.map((msg) => (
+                            <div key={msg.id} style={{ padding: 'var(--space-4)', background: 'var(--navy-50)', borderLeft: '4px solid var(--navy-600)', borderRadius: 'var(--radius)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--navy-900)' }}>{msg.subject}</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>{new Date(msg.sentAt).toLocaleString()}</span>
+                              </div>
+                              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--ink-soft)', whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>{msg.messageBody}</p>
+                              <div style={{ marginTop: 'var(--space-2)', fontSize: '0.75rem', color: 'var(--ink-muted)', display: 'flex', gap: '12px' }}>
+                                <span>Sent To: {msg.managerName || 'Account Manager'}</span>
+                                <span>·</span>
+                                <span>Status: Forwarded to Support Email</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                   )}

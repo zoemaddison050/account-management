@@ -32,8 +32,8 @@ public class Client
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public string PortfoliosJson { get; set; } = "[]";
-    public string DocumentsJson { get; set; } = "[]";
-    public string ActivityJson { get; set; } = "[]";
+    public string? PortfoliosJson { get; set; } = "[]";
+    public string? DocumentsJson { get; set; } = "[]";
+    public string? ActivityJson { get; set; } = "[]";
     public DateTime? PortfolioLastUpdated { get; set; }
 }

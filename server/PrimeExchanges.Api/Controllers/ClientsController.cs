@@ -5,6 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PrimeExchanges.Api.Data;
 using PrimeExchanges.Api.Models;
+using PrimeExchanges.Api.Services;
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Caching.Memory;
 using PdfSharpCore.Pdf;
 using PdfSharpCore.Drawing;
 using System.Text.Json;
@@ -18,12 +22,18 @@ namespace PrimeExchanges.Api.Controllers;
 public class ClientsController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly IEmailService _emailService;
     private readonly ILogger<ClientsController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMemoryCache _cache;
 
-    public ClientsController(AppDbContext dbContext, ILogger<ClientsController> logger)
+    public ClientsController(AppDbContext dbContext, IEmailService emailService, ILogger<ClientsController> logger, IHttpClientFactory httpClientFactory, IMemoryCache cache)
     {
         _dbContext = dbContext;
+        _emailService = emailService;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
+        _cache = cache;
     }
 
     /// <summary>
@@ -174,7 +184,7 @@ public class ClientsController : ControllerBase
     /// Downloads/views a dynamic client document (statement).
     /// </summary>
     [HttpGet("me/documents/{docId}/pdf")]
-    public async Task<IActionResult> GetDocumentPdf(string docId, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetDocumentPdf(string docId, [FromQuery] string? currency, CancellationToken cancellationToken)
     {
         var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
             ?? User.FindFirstValue(ClaimTypes.Email);
@@ -202,7 +212,11 @@ public class ClientsController : ControllerBase
             {
                 var updateDate = new DateTime(ticks);
                 var statementDate = updateDate.AddDays(7);
-                var pdfBytes = GenerateValuationStatementPdf(client, statementDate);
+                
+                var targetCurrency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
+                var rate = await GetExchangeRateAsync(targetCurrency, cancellationToken);
+                
+                var pdfBytes = GenerateValuationStatementPdf(client, statementDate, targetCurrency, rate);
                 return File(pdfBytes, "application/pdf", $"Valuation-Statement-{statementDate:yyyy-MM-dd}.pdf");
             }
         }
@@ -210,7 +224,65 @@ public class ClientsController : ControllerBase
         return BadRequest(new { message = "Document PDF not found or not dynamic." });
     }
 
-    private byte[] GenerateValuationStatementPdf(Client client, DateTime statementDate)
+    private async Task<decimal> GetExchangeRateAsync(string targetCurrency, CancellationToken cancellationToken)
+    {
+        if (targetCurrency == "USD") return 1.0m;
+
+        var cacheKey = $"fx-rate:{targetCurrency}";
+        if (_cache.TryGetValue(cacheKey, out decimal cachedRate))
+        {
+            return cachedRate;
+        }
+
+        var rate = await FetchExchangeRateAsync(targetCurrency, cancellationToken);
+
+        // Cache successful and fallback rates for 5 minutes to reduce API load
+        // and keep PDF generation responsive.
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetAbsoluteExpiration(TimeSpan.FromMinutes(5))
+            .SetPriority(CacheItemPriority.Normal);
+        _cache.Set(cacheKey, rate, cacheOptions);
+
+        return rate;
+    }
+
+    private async Task<decimal> FetchExchangeRateAsync(string targetCurrency, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var httpClient = _httpClientFactory.CreateClient("fx");
+            var url = "https://open.er-api.com/v6/latest/USD";
+            var response = await httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                using (var doc = JsonDocument.Parse(json))
+                {
+                    if (doc.RootElement.TryGetProperty("rates", out var ratesElement) &&
+                        ratesElement.TryGetProperty(targetCurrency, out var rateElement))
+                    {
+                        return rateElement.GetDecimal();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Forex] Failed to fetch rate for {TargetCurrency}; using static fallback.", targetCurrency);
+        }
+
+        // Static fallbacks
+        return targetCurrency switch
+        {
+            "EUR" => 0.92m,
+            "GBP" => 0.78m,
+            "AUD" => 1.51m,
+            "CAD" => 1.37m,
+            _ => 1.0m
+        };
+    }
+
+    private byte[] GenerateValuationStatementPdf(Client client, DateTime statementDate, string currencyCode, decimal rate)
     {
         var document = new PdfDocument();
         document.Info.Title = $"PrimeXchanges Valuation Statement - {client.ClientId}";
@@ -249,7 +321,7 @@ public class ClientsController : ControllerBase
         
         // Main title
         gfx.DrawString("Portfolio Valuation Statement", titleFont, headerBrush, 40, 120);
-        gfx.DrawString($"Official Statement · Generated Date: {statementDate:yyyy-MM-dd}", subtitleFont, new XSolidBrush(textMuted), 40, 138);
+        gfx.DrawString($"Official Statement · Generated Date: {statementDate:yyyy-MM-dd} ({currencyCode})", subtitleFont, new XSolidBrush(textMuted), 40, 138);
         
         // Client details box
         gfx.DrawString("CLIENT INFO", sectionHeaderFont, orangeBrush, 40, 170);
@@ -283,12 +355,22 @@ public class ClientsController : ControllerBase
         gfx.DrawString("Asset / Instrument", gridFont, headerTextBrush, 50, tableY + 14);
         gfx.DrawString("Type", gridFont, headerTextBrush, 240, tableY + 14);
         gfx.DrawString("Allocation %", gridFont, headerTextBrush, 360, tableY + 14);
-        gfx.DrawString("Value (USD)", gridFont, headerTextBrush, 460, tableY + 14);
+        gfx.DrawString($"Value ({currencyCode})", gridFont, headerTextBrush, 460, tableY + 14);
         tableY += 20;
 
         decimal totalValue = 0;
         var itemFont = new XFont("Arial", 9, XFontStyle.Regular);
         var itemBoldFont = new XFont("Arial", 9, XFontStyle.Bold);
+        
+        string currencySymbol = currencyCode switch
+        {
+            "EUR" => "€",
+            "GBP" => "£",
+            "AUD" => "A$",
+            "CAD" => "C$",
+            "USD" => "$",
+            _ => "$"
+        };
         
         try
         {
@@ -315,6 +397,7 @@ public class ClientsController : ControllerBase
                         decimal.TryParse(hold["value"]?.ToString(), out val);
                         
                         totalValue += val;
+                        decimal convertedVal = val * rate;
                         
                         // Draw row background for alternating rows
                         gfx.DrawRectangle(new XSolidBrush(XColor.FromArgb(248, 250, 252)), 40, tableY, page.Width - 80, 18);
@@ -322,7 +405,7 @@ public class ClientsController : ControllerBase
                         gfx.DrawString(instrument, itemFont, labelBrush, 50, tableY + 13);
                         gfx.DrawString(type, itemFont, labelBrush, 240, tableY + 13);
                         gfx.DrawString($"{pct:F1}%", itemFont, labelBrush, 360, tableY + 13);
-                        gfx.DrawString($"${val:N2}", itemFont, labelBrush, 460, tableY + 13);
+                        gfx.DrawString($"{currencySymbol}{convertedVal:N2}", itemFont, labelBrush, 460, tableY + 13);
                         
                         tableY += 18;
                         
@@ -345,20 +428,115 @@ public class ClientsController : ControllerBase
         }
 
         // Draw Total Row
+        decimal totalConverted = totalValue * rate;
         gfx.DrawRectangle(new XSolidBrush(grayColor), 40, tableY, page.Width - 80, 22);
         gfx.DrawString("Total Portfolio Valuation", itemBoldFont, labelBrush, 50, tableY + 15);
-        gfx.DrawString($"${totalValue:N2}", itemBoldFont, new XSolidBrush(orangeColor), 460, tableY + 15);
+        gfx.DrawString($"{currencySymbol}{totalConverted:N2}", itemBoldFont, new XSolidBrush(orangeColor), 460, tableY + 15);
         tableY += 40;
 
         // Footer disclaimer
         gfx.DrawString("Disclaimer: This statement is prepared as a read-only document based on assets verified under custody", subtitleFont, new XSolidBrush(textMuted), 40, page.Height - 50);
-        gfx.DrawString("with PrimeXchanges. Past performance is no guarantee of future results.", subtitleFont, new XSolidBrush(textMuted), 40, page.Height - 38);
+        gfx.DrawString($"with PrimeXchanges. Values are shown in {currencyCode} using current valuation rates. Past performance is no guarantee of results.", subtitleFont, new XSolidBrush(textMuted), 40, page.Height - 38);
 
         using (var ms = new System.IO.MemoryStream())
         {
             document.Save(ms);
             return ms.ToArray();
         }
+    }
+
+    [HttpGet("me/messages")]
+    public async Task<ActionResult<IEnumerable<SupportMessage>>> GetSupportMessages(CancellationToken cancellationToken)
+    {
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
+            ?? User.FindFirstValue(ClaimTypes.Email);
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized(new { message = "Invalid session." });
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var client = await _dbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Email == normalizedEmail, cancellationToken);
+
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        var messages = await _dbContext.SupportMessages
+            .Where(m => m.ClientId == client.ClientId)
+            .OrderByDescending(m => m.SentAt)
+            .ToListAsync(cancellationToken);
+
+        return Ok(messages);
+    }
+
+    public class CreateSupportMessageRequest
+    {
+        [Required]
+        [MaxLength(200)]
+        public string Subject { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(4000)]
+        public string MessageBody { get; set; } = string.Empty;
+    }
+
+    [HttpPost("me/messages")]
+    [EnableRateLimiting("support-message")]
+    public async Task<ActionResult> CreateSupportMessage([FromBody] CreateSupportMessageRequest request, CancellationToken cancellationToken)
+    {
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email)
+            ?? User.FindFirstValue(ClaimTypes.Email);
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized(new { message = "Invalid session." });
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var client = await _dbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Email == normalizedEmail, cancellationToken);
+
+        if (client == null)
+        {
+            return NotFound(new { message = "Client not found." });
+        }
+
+        var message = new SupportMessage
+        {
+            ClientId = client.ClientId,
+            ClientName = client.Name,
+            ManagerName = client.ManagerName ?? "PrimeXchanges Support",
+            Subject = request.Subject,
+            MessageBody = request.MessageBody,
+            SentAt = DateTime.UtcNow,
+            IsFromClient = true
+        };
+
+        _dbContext.SupportMessages.Add(message);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Send notification to support@primexchanges.com
+        try
+        {
+            await _emailService.SendSupportMessageAlertAsync(
+                client.Name,
+                client.ClientId,
+                request.Subject,
+                request.MessageBody,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send support email alert for client {ClientId}", client.ClientId);
+        }
+
+        return Ok(new { message = "Message sent successfully to your account manager." });
     }
 }
 

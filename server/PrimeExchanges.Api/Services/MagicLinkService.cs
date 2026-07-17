@@ -32,19 +32,15 @@ public class MagicLinkService : IMagicLinkService
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
 
-        // Only allow emails associated with an approved client or submitted application.
+        // Only allow emails associated with an active client.
         var client = await _dbContext.Clients
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Email == normalizedEmail, cancellationToken);
 
-        var application = await _dbContext.Applications
-            .AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Email == normalizedEmail, cancellationToken);
-
-        if (client == null && application == null)
+        if (client == null || !string.Equals(client.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
             // Return a generic success to prevent email enumeration.
-            _logger.LogInformation("Magic link requested for unknown email: {Email}", normalizedEmail);
+            _logger.LogInformation("Magic link requested for non-active or unknown client: {Email}", normalizedEmail);
             return (true, "If this email is registered, a sign-in code has been sent.", 15);
         }
 
@@ -90,7 +86,8 @@ public class MagicLinkService : IMagicLinkService
 
         if (magicLinkToken == null || magicLinkToken.IsExpired)
         {
-            _logger.LogWarning("Invalid or expired magic link token for {Email}", normalizedEmail);
+            _logger.LogWarning("Invalid or expired magic link token verification attempt for {Email}. DB Match: {DbMatch}, IsExpired: {IsExpired}", 
+                normalizedEmail, magicLinkToken != null, magicLinkToken?.IsExpired);
             return (false, null, null, null, null, null, "Invalid or expired code.");
         }
 

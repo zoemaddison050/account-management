@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
     public DbSet<PdfGrant> PdfGrants => Set<PdfGrant>();
     public DbSet<ApplicationDraft> ApplicationDrafts => Set<ApplicationDraft>();
+    public DbSet<SupportMessage> SupportMessages => Set<SupportMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +84,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ApplicationDraft>(entity =>
         {
             entity.HasIndex(e => e.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<SupportMessage>(entity =>
+        {
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => e.SentAt);
         });
     }
 }

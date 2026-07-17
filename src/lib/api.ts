@@ -9,7 +9,8 @@ import type {
   ClientDocument,
   Application,
   Client,
-  AuditEvent
+  AuditEvent,
+  SupportMessage
 } from '../types';
 import {
   accountManagers,
@@ -39,7 +40,7 @@ const SESSION_KEY = 'prime-exchanges.session';
  * Whether the API client will attempt real network calls.
  * When false, all fetch helpers return synthetic demo data immediately.
  */
-export const isApiConfigured = API_BASE_URL !== '';
+export const isApiConfigured = import.meta.env.PROD || API_BASE_URL !== '';
 
 export interface SubmitApplicationRequest {
   firstName: string;
@@ -397,12 +398,15 @@ export async function getClientDocuments(): Promise<ClientDocument[]> {
 /**
  * Download a client PDF document.
  */
-export async function getClientDocumentPdf(id: string): Promise<Blob> {
+export async function getClientDocumentPdf(id: string, currency?: string): Promise<Blob> {
   if (!isApiConfigured) {
     await new Promise((resolve) => setTimeout(resolve, 300));
     return new Blob(['%PDF-1.4 Mock PDF content...'], { type: 'application/pdf' });
   }
-  const url = `${API_BASE_URL}/clients/me/documents/${id}/pdf`;
+  let url = `${API_BASE_URL}/clients/me/documents/${id}/pdf`;
+  if (currency) {
+    url += `?currency=${encodeURIComponent(currency)}`;
+  }
   const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${getAuthToken()}`
@@ -774,4 +778,65 @@ export async function getApplicationPdfBlob(id: string): Promise<Blob> {
     throw new Error(`API ${res.status}: Failed to fetch PDF`);
   }
   return res.blob();
+}
+
+const mockSupportMessages: SupportMessage[] = [
+  {
+    id: 1,
+    clientId: 'CL-72948',
+    clientName: 'Sarah Jenkins',
+    managerName: 'Zack Whitfield',
+    subject: 'Welcome to PrimeXchanges',
+    messageBody: 'Hello Sarah, welcome to PrimeXchanges. I am your account manager. Let me know if you have any questions.',
+    sentAt: '2026-07-01T10:00:00Z',
+    isFromClient: false
+  }
+];
+
+/**
+ * Fetch client portal support messages.
+ */
+export async function getClientSupportMessages(): Promise<SupportMessage[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return mockSupportMessages;
+  }
+  return apiFetch<SupportMessage[]>('/clients/me/messages');
+}
+
+/**
+ * Send a new client portal support message.
+ */
+export async function createClientSupportMessage(subject: string, messageBody: string): Promise<{ message: string }> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const newMessage: SupportMessage = {
+      id: mockSupportMessages.length + 1,
+      clientId: demoClient.id,
+      clientName: demoClient.name,
+      managerName: demoClient.managerName,
+      subject,
+      messageBody,
+      sentAt: new Date().toISOString(),
+      isFromClient: true
+    };
+    mockSupportMessages.unshift(newMessage);
+    return { message: 'Message sent successfully.' };
+  }
+  return apiFetch<{ message: string }>('/clients/me/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject, messageBody }),
+  });
+}
+
+/**
+ * Fetch client support messages for the admin console.
+ */
+export async function getAdminClientSupportMessages(clientId: string): Promise<SupportMessage[]> {
+  if (!isApiConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return mockSupportMessages;
+  }
+  return apiFetch<SupportMessage[]>(`/admin/clients/${clientId}/messages`);
 }

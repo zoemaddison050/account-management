@@ -4,6 +4,7 @@ import EmptyState from '../../components/EmptyState';
 import { formatDate } from '../../data/mockData';
 import { getClientDocuments, getClientDocumentPdf } from '../../lib/api';
 import type { ClientDocument } from '../../types';
+import { useCurrency } from '../../lib/currency';
 
 const typeFilters = ['All', 'Statement', 'Report', 'Agreement', 'Policy', 'Tax'];
 
@@ -16,6 +17,7 @@ const typeIcons: Record<string, string> = {
 };
 
 export default function Documents() {
+  const { currency } = useCurrency();
   const [filter, setFilter] = useState('All');
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export default function Documents() {
     if (viewingId) return;
     setViewingId(id);
     try {
-      const blob = await getClientDocumentPdf(id);
+      const blob = await getClientDocumentPdf(id, currency);
       const url = window.URL.createObjectURL(blob);
       const newTab = window.open(url, '_blank');
       if (!newTab) {

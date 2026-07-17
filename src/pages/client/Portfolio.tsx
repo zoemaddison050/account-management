@@ -5,7 +5,8 @@ import FreshnessIndicator from '../../components/FreshnessIndicator';
 import { getCurrentClient } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import type { ClientProfile } from '../../types';
-import { formatCurrency, formatDate, portfolioHistory } from '../../data/mockData';
+import { formatDate, portfolioHistory } from '../../data/mockData';
+import { useCurrency } from '../../lib/currency';
 
 const holdingTypeColors: Record<string, string> = {
   Equity: '#244d8a',
@@ -19,6 +20,7 @@ const holdingTypeColors: Record<string, string> = {
 };
 
 export default function Portfolio() {
+  const { formatCurrency } = useCurrency();
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +153,7 @@ export default function Portfolio() {
           <div className="card" style={{ marginBottom: 'var(--space-5)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
             <div>
               <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total Value</p>
-              <p style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 600, color: 'var(--navy-800)' }}>{formatCurrency(portfolio.totalValue, portfolio.currency)}</p>
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 600, color: 'var(--navy-800)' }}>{formatCurrency(portfolio.totalValue)}</p>
               <p className="text-muted" style={{ fontSize: '0.82rem' }}>{portfolio.valuationBasis}</p>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -201,16 +203,16 @@ export default function Portfolio() {
                 <div style={{ display: 'flex', gap: 'var(--space-5)', marginTop: 'var(--space-4)' }}>
                   <div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>Period Low</p>
-                    <p className="fw-600" style={{ fontSize: '0.9rem', color: 'var(--danger)' }}>{formatCurrency(minVal, portfolio.currency)}</p>
+                    <p className="fw-600" style={{ fontSize: '0.9rem', color: 'var(--danger)' }}>{formatCurrency(minVal)}</p>
                   </div>
                   <div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>Period High</p>
-                    <p className="fw-600" style={{ fontSize: '0.9rem', color: 'var(--success)' }}>{formatCurrency(maxVal, portfolio.currency)}</p>
+                    <p className="fw-600" style={{ fontSize: '0.9rem', color: 'var(--success)' }}>{formatCurrency(maxVal)}</p>
                   </div>
                   <div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>Change</p>
                     <p className="fw-600" style={{ fontSize: '0.9rem', color: 'var(--success)' }}>
-                      +{formatCurrency(maxVal - minVal, portfolio.currency)} ({((maxVal - minVal) / minVal * 100).toFixed(1)}%)
+                      +{formatCurrency(maxVal - minVal)} ({((maxVal - minVal) / minVal * 100).toFixed(1)}%)
                     </p>
                   </div>
                 </div>
@@ -274,7 +276,7 @@ export default function Portfolio() {
                       </td>
                       <td><span className="badge badge-muted">{h.type}</span></td>
                       <td className="text-right mono">–</td>
-                      <td className="text-right fw-600">{formatCurrency(h.value, portfolio.currency)}</td>
+                      <td className="text-right fw-600">{formatCurrency(h.value)}</td>
                       <td className="text-right">
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
                           <div style={{ width: '60px', height: '6px', background: 'var(--line-soft)', borderRadius: '3px', overflow: 'hidden' }}>

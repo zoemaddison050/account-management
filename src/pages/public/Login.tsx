@@ -26,6 +26,7 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [expiresIn, setExpiresIn] = useState(15);
   const [resendDisabled, setResendDisabled] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const validateEmail = (): boolean => {
@@ -114,11 +115,17 @@ export default function Login() {
   const handleResend = async () => {
     if (resendDisabled) return;
     setResendDisabled(true);
+    setResendSuccess(false);
+    if (authError) clearError();
     try {
       const result = await requestMagicLink({ email: email.trim() });
       setExpiresIn(result.expiresInMinutes);
       setToken('');
       setErrors((prev) => ({ ...prev, token: undefined }));
+      setResendSuccess(true);
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 50);
     } catch {
       // Error surfaced via useAuth error state
     } finally {
@@ -135,6 +142,7 @@ export default function Login() {
       return chars.join('').slice(0, 6);
     });
     if (authError) clearError();
+    if (resendSuccess) setResendSuccess(false);
     if (index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
@@ -347,7 +355,15 @@ export default function Login() {
                   <p className="text-muted" style={{ fontSize: '0.78rem' }}>
                     Code expires in {expiresIn} minutes.
                   </p>
-                  {!isApiConfigured && (
+                  <p className="text-warning" style={{ fontSize: '0.8rem', marginTop: 'var(--space-3)', lineHeight: '1.4', color: 'var(--brand-orange-deep, #ea580c)', fontWeight: 500 }}>
+                    Only the most recently requested sign-in code works. Requesting or resending a code invalidates earlier codes.
+                  </p>
+                  {resendSuccess && (
+                    <p className="text-success" style={{ fontSize: '0.82rem', marginTop: 'var(--space-2)', color: 'var(--success)', fontWeight: 500 }}>
+                      A new code has been sent successfully.
+                    </p>
+                  )}
+                  {!isApiConfigured && !import.meta.env.PROD && (
                     <p className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: 'var(--space-2)' }}>
                       Demo mode — use code <strong>{MOCK_CODE}</strong>
                     </p>
@@ -428,7 +444,7 @@ export default function Login() {
                     ))}
                   </div>
                   {errors.token && <p className="form-error">{errors.token}</p>}
-                  {!isApiConfigured && (
+                  {!isApiConfigured && !import.meta.env.PROD && (
                     <p className="badge badge-warning" style={{ fontSize: '0.75rem', marginTop: 'var(--space-2)' }}>
                       Demo mode — use code <strong>{MOCK_CODE}</strong>
                     </p>

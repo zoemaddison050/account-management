@@ -3,6 +3,7 @@ import { Outlet, NavLink, Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { demoClient } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
+import { useCurrency } from '../lib/currency';
 
 const clientNav = [
   { label: 'Dashboard', to: '/client/dashboard', icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
@@ -16,6 +17,7 @@ const clientNav = [
 export default function ClientLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { session, logout } = useAuth();
+  const { currency, setCurrency } = useCurrency();
 
   const clientName = session?.clientName || demoClient.name;
   const clientRef = session?.clientId || demoClient.reference;
@@ -43,6 +45,31 @@ export default function ClientLayout() {
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+            {/* Currency Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span className="hide-mobile" style={{ fontSize: '0.75rem', color: 'var(--navy-300)', fontWeight: 600 }}>CURRENCY:</span>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                style={{
+                  background: 'var(--navy-800)',
+                  color: 'var(--white)',
+                  border: '1px solid var(--navy-700)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="AUD">AUD ($)</option>
+                <option value="CAD">CAD ($)</option>
+              </select>
+            </div>
             <div className="hide-mobile" style={{ textAlign: 'right' }}>
               <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{clientName}</p>
               <p style={{ fontSize: '0.75rem', color: 'var(--navy-300)' }}>{clientRef}</p>

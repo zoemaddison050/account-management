@@ -4,6 +4,7 @@ dist-ssr
 *.local
 .DS_Store
 .vscode/*
+.freebuff
 !.vscode/extensions.json
 .env
 .env.local
@@ -49,3 +50,4 @@ output/
 temp/
 wwwroot/
 /server/PrimeExchanges.Api/wwwroot/
+*.zip

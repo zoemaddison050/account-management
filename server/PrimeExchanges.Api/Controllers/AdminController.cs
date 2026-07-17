@@ -970,6 +970,21 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Returns support messages for a specific client (Admin-only).
+    /// </summary>
+    [HttpGet("clients/{clientId}/messages")]
+    [Authorize(Roles = "Administrator,ComplianceApprover,OperationsReviewer,AccountManager")]
+    public async Task<ActionResult<IEnumerable<SupportMessage>>> GetClientSupportMessages(string clientId, CancellationToken cancellationToken)
+    {
+        var messages = await _dbContext.SupportMessages
+            .Where(m => m.ClientId == clientId)
+            .OrderByDescending(m => m.SentAt)
+            .ToListAsync(cancellationToken);
+
+        return Ok(messages);
+    }
+
+    /// <summary>
     /// Updates a client's portfolios, documents, and activities JSON fields.
     /// </summary>
     [HttpPut("clients/{clientId}/portfolio-data")]
@@ -994,7 +1009,25 @@ public class AdminController : ControllerBase
 
         if (client.PortfoliosJson != request.PortfoliosJson)
         {
+            // Throttle valuation-statement emails to one per 24 hours per client
+            // so repeated admin edits do not spam the client.
+            var shouldNotify = !client.PortfolioLastUpdated.HasValue
+                || (DateTime.UtcNow - client.PortfolioLastUpdated.Value) > TimeSpan.FromHours(24);
+
             client.PortfolioLastUpdated = DateTime.UtcNow;
+
+            if (shouldNotify)
+            {
+                try
+                {
+                    var stmtDateStr = DateTime.UtcNow.AddDays(7).ToString("MMMM yyyy");
+                    await _emailService.SendValuationStatementReadyAsync(client.Email, client.Name, stmtDateStr, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send valuation statement email to {Email}", client.Email);
+                }
+            }
         }
 
         client.PortfoliosJson = request.PortfoliosJson;

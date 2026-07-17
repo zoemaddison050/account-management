@@ -7,7 +7,7 @@ public static class SeedData
 {
     public static async Task InitializeAsync(AppDbContext context, IConfiguration configuration, bool isDevelopment)
     {
-        if (context.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        if (isDevelopment && context.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             await context.Database.MigrateAsync();
         }
@@ -176,39 +176,44 @@ public static class SeedData
             }
         }
 
-        if (!await context.StaffUsers.AnyAsync())
+        // Clean up legacy staff users if they exist in the DB
+        var legacyUsers = await context.StaffUsers
+            .Where(u => u.Email == "accounts@primexchanges.com" || u.Email == "requests@primexchanges.com")
+            .ToListAsync();
+        if (legacyUsers.Any())
         {
-            var defaultPassword = configuration["SeedData:DefaultStaffPassword"] ?? "Admin@PrimeX2026!";
-            var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword);
-            context.StaffUsers.AddRange(
-                new StaffUser
-                {
-                    UserId = "USR-001",
-                    Name = "Prime Accounts Admin",
-                    Email = "accounts@primexchanges.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = "Administrator",
-                    Status = "active"
-                },
-                new StaffUser
+            context.StaffUsers.RemoveRange(legacyUsers);
+            await context.SaveChangesAsync();
+        }
+
+        // Upsert support@primexchanges.com as the Administrator staff user.
+        // A password must be explicitly configured via SeedData:DefaultStaffPassword.
+        // No fallback password is provided to avoid shipping a hardcoded credential.
+        var configuredPassword = configuration["SeedData:DefaultStaffPassword"];
+        var supportUser = await context.StaffUsers.FirstOrDefaultAsync(u => u.Email == "support@primexchanges.com");
+
+        if (supportUser == null)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredPassword))
+            {
+                var passwordHash = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+                context.StaffUsers.Add(new StaffUser
                 {
                     UserId = "USR-002",
-                    Name = "Prime Support Reviewer",
+                    Name = "Prime Support Admin",
                     Email = "support@primexchanges.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = "OperationsReviewer",
+                    PasswordHash = passwordHash,
+                    Role = "Administrator",
                     Status = "active"
-                },
-                new StaffUser
-                {
-                    UserId = "USR-003",
-                    Name = "Prime Compliance Approver",
-                    Email = "requests@primexchanges.com",
-                    PasswordHash = defaultPasswordHash,
-                    Role = "ComplianceApprover",
-                    Status = "active"
-                }
-            );
+                });
+                await context.SaveChangesAsync();
+            }
+        }
+        else if (supportUser.Role != "Administrator")
+        {
+            supportUser.Role = "Administrator";
+            supportUser.Name = "Prime Support Admin";
+            await context.SaveChangesAsync();
         }
 
         await context.SaveChangesAsync();
