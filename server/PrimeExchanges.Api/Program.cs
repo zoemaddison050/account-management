@@ -257,6 +257,14 @@ app.UseHttpsRedirection();
 app.UseRateLimiter();
 app.UseCors("AllowReactApp");
 
+// Ensure WebRootPath points to wwwroot (or publish/wwwroot if running from repository root via GitHub Sync)
+var defaultWwwroot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+var publishWwwroot = Path.Combine(app.Environment.ContentRootPath, "publish", "wwwroot");
+if (!Directory.Exists(defaultWwwroot) && Directory.Exists(publishWwwroot))
+{
+    app.Environment.WebRootPath = publishWwwroot;
+}
+
 // Serve the compiled React SPA static files from wwwroot.
 app.UseDefaultFiles();
 app.UseStaticFiles();
