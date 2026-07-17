@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -7,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using PrimeExchanges.Api.Data;
 using PrimeExchanges.Api.Services;
 using System.Text;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -240,22 +242,25 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// Security headers
+// Support IIS and reverse proxy forwarded headers (prevents HTTPS redirection loops on IIS)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+
+// Security headers (relaxed CSP to prevent blocking React bundle assets)
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
-    // CSP: Allow self framing and blob frame sources for PDF rendering.
-    context.Response.Headers["Content-Security-Policy"] =
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; frame-ancestors 'self';";
     await next();
 });
 
-app.UseHttpsRedirection();
 app.UseRateLimiter();
 app.UseCors("AllowReactApp");
+
 
 // Ensure WebRootPath points to wwwroot (or publish/wwwroot if running from repository root via GitHub Sync)
 var defaultWwwroot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
